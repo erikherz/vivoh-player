@@ -3,7 +3,7 @@
 <head>
     <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
     <link rel="icon" href="data:;base64,=">
-    <title>Vivoh WebTransport and Multicast Player</title>
+    <title>Vivoh WebTransport Player</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -116,7 +116,7 @@
                 <option value="unicast">Unicast</option>
                 <option value="multicast">Multicast</option>
             </select>
-            <span id="urlLabel" class="url-input-label">WebTransport Server URL :</span>
+            <span id="urlLabel" class="url-input-label">WebTransport Server URL:</span>
             <input id="sURL" type="text" value="https://va01.wtmpeg.com/live" />
             <div class="header-buttons">
                 <button id="connectButton" onclick="player_connect()">Connect</button>
@@ -145,27 +145,48 @@
             const sURL = document.getElementById('sURL');
             
             if (streamType === 'unicast') {
-                urlLabel.textContent = 'WebTransport Server URL :'; 
+                urlLabel.textContent = 'WebTransport Server URL:';
                 sURL.value = 'https://va01.wtmpeg.com/live';
             } else if (streamType === 'multicast') {
-                urlLabel.textContent = 'Multicast Group Address : Port';
+                urlLabel.textContent = 'Multicast Group Address:Port:';
                 sURL.value = '239.0.0.1:8888';
             }
         }
         
         function player_connect() {
             if (player) {
-                player_destroy();
+                player_disconnect();
             }
 
             const url = document.getElementById('sURL').value;
             const streamType = document.getElementById('streamTypeSelect').value;
             
+            // Set up the correct URL for player
+            let playerUrl;
+            
+            // Check if this is a multicast connection
+            if (streamType === 'multicast' && typeof window.electron !== 'undefined') {
+                // Connect to multicast group using Electron IPC
+                window.electron.joinMulticast(url);
+                
+                // Log that we're trying to join the multicast group
+                const logEntry = `Attempting to join multicast group: ${url}`;
+                logcatbox.value += logEntry + '\n';
+                logcatbox.scrollTop = logcatbox.scrollHeight;
+                
+                // Set the player URL to the local WebSocket server
+                // For MPEGTS.js WebSocket consumption, we need to use ws:// protocol
+                playerUrl = 'ws://localhost:8080/mpegts';
+            } else {
+                // For regular unicast, use the provided URL
+                playerUrl = url;
+            }
+            
             const mediaDataSource = {
                 type: 'mse',
                 hasVideo: true,
                 hasAudio: true,
-                url: url,
+                url: playerUrl,
                 isLive: true
             };
 
@@ -187,7 +208,49 @@
                 player.destroy();
                 player = null;
             }
+            
+            // If this is an Electron app, leave the multicast group
+            if (typeof window.electron !== 'undefined') {
+                window.electron.leaveMulticast();
+                
+                // Log that we're leaving the multicast group
+                const logEntry = 'Leaving multicast group';
+                logcatbox.value += logEntry + '\n';
+                logcatbox.scrollTop = logcatbox.scrollHeight;
+            }
         }
+        
+        // Setup electron IPC listeners if available
+        function setupElectronListeners() {
+            if (typeof window.electron !== 'undefined') {
+                // Listen for multicast join confirmation
+                window.electron.onMulticastJoined((address) => {
+                    const logEntry = `Successfully joined multicast group: ${address}`;
+                    logcatbox.value += logEntry + '\n';
+                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                });
+                
+                // Listen for multicast errors
+                window.electron.onMulticastError((error) => {
+                    const logEntry = `Multicast error: ${error}`;
+                    logcatbox.value += logEntry + '\n';
+                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                });
+                
+                // Listen for multicast data
+                window.electron.onMulticastData((data) => {
+                    const logEntry = `Received ${data.data.length} bytes from ${data.rinfo.address}:${data.rinfo.port}`;
+                    logcatbox.value += logEntry + '\n';
+                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                    
+                    // Here you would process the multicast data as needed
+                    // This depends on what format your multicast data is in
+                });
+            }
+        }
+        
+        // Call setupElectronListeners when the page loads
+        window.addEventListener('DOMContentLoaded', setupElectronListeners);
 
         // Add log listener
         mpegts.LoggingControl.addLogListener(function(type, str) {

@@ -1,22 +1,17 @@
 {
-  "name": "vivoh-player",
+  "name": "multicast-webtransport-player",
   "version": "1.0.0",
+  "description": "Video player with multicast and WebTransport support",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/erikherz/vivoh-player.git"
-  },
-  "keywords": [],
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/erikherz/vivoh-player/issues"
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.1"
   },
-  "homepage": "https://github.com/erikherz/vivoh-player#readme",
-  "description": "",
   "devDependencies": {
     "electron": "^35.1.2"
   }
