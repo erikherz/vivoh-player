@@ -1,0 +1,31 @@
+# Electron build and cache directories
+/dist
+/out
+/build
+/.cache
+
+# Compiled source #
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Logs
+logs
+*.log
+
+# Node modules
+node_modules/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# VSCode (if applicable)
+.vscode/
+
+# Electron packaging
+*.asar
+

@@ -1,0 +1,23 @@
+{
+  "name": "vivoh-player",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erikherz/vivoh-player.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/erikherz/vivoh-player/issues"
+  },
+  "homepage": "https://github.com/erikherz/vivoh-player#readme",
+  "description": "",
+  "devDependencies": {
+    "electron": "^35.1.2"
+  }
+}
