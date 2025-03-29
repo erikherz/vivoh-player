@@ -7,7 +7,7 @@ npm start
 ```
 UNICAST:
 ```
-> Deploy Vivoh WtMPEG: https://github.com/erikherz/wtmpeg
+> Deploy Vivoh WTMPEG: https://github.com/erikherz/wtmpeg
 > Confirm or change the URL and click Connect
 ```
 Multicast:
