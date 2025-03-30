@@ -104,7 +104,7 @@ function closeServer() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1290,
-    height: 810,
+    height: 880,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
