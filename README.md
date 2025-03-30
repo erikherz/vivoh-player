@@ -31,4 +31,5 @@ Binaries:
 ```
 https://wtmpeg.com/vivoh-mwp-intel.zip
 https://wtmpeg.com/vivoh-mwp-silicon.zip
+https://wtmpeg.com/vivoh-mwp-windows.zip
 ```
