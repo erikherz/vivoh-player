@@ -18,3 +18,11 @@ Multicast:
 > Select "Multicast"
 > Confirm or change the Group Address : Port and click Connect
 ```
+
+Buiilding a binary:
+```
+npm install --save-dev @electron-forge/cli
+npx electron-forge import
+npm run make\n
+```
+This will be in ./out
