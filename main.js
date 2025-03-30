@@ -85,8 +85,6 @@ function createServer(port = 8080) {
       mainWindow.webContents.send('server-started', { port });
     }
   });
-  
-  return { broadcastData };
 }
 
 function closeServer() {
@@ -151,7 +149,7 @@ function joinMulticastGroup(addressPort) {
   }
   
   // Start the WebSocket server if not already running
-  const { broadcastData } = createServer();
+  createServer();
   
   // Create a new UDP socket
   multicastSocket = dgram.createSocket('udp4');
