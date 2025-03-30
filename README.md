@@ -23,7 +23,7 @@ Buiilding a binary:
 ```
 npm install --save-dev @electron-forge/cli
 npx electron-forge import
-npm run make\n
+npm run make
 ```
 This will be in ./out
 
