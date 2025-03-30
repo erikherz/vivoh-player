@@ -14,7 +14,7 @@ Multicast:
 ```
 > Deownload source file: https://wtmpeg.com/adena.mp4
 > Install FFmpeg
-> Run: ffmpeg -re -stream_loop -1 -i adena.mp4 -c copy -f mpegts udp://239.0.0.1:8888?pkt_size=1316
+> Run: ffmpeg -re -stream_loop -1 -i adena.mp4 -c copy -f mpegts "udp://239.0.0.1:8888?pkt_size=1316"
 > Select "Multicast"
 > Confirm or change the Group Address : Port and click Connect
 ```
