@@ -3,7 +3,7 @@
 <head>
     <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
     <link rel="icon" href="data:;base64,=">
-    <title>Vivoh WebTransport Player</title>
+    <title>Vivoh WebTransport Multicast Player</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -30,12 +30,6 @@
             margin: 0 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
-        }
-        .url-input select {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
         }
         .url-input-label {
             min-width: 220px;
@@ -112,19 +106,14 @@
             <div class="logo-container">
                 <a href="https://vivoh.com"><img height="30" border="0" src="vivoh.png"></a>
             </div>
-            <select id="streamTypeSelect" onchange="updateInputLabel()">
-                <option value="unicast">Unicast</option>
-                <option value="multicast">Multicast</option>
-            </select>
-            <span id="urlLabel" class="url-input-label">WebTransport Server URL:</span>
-            <input id="sURL" type="text" value="https://va01.wtmpeg.com/live" />
+            <input id="multicastAddress" type="text" value="239.0.0.1:8888" />
             <div class="header-buttons">
                 <button id="connectButton" onclick="player_connect()">Connect</button>
                 <button id="disconnectButton" onclick="player_disconnect()">Disconnect</button>
             </div>
         </div>
         <div class="video-container">
-            <video id="videoElement" class="centeredVideo" controls playsinline>
+            <video id="videoElement" class="centeredVideo" playsinline>
                 Your browser is too old which doesn't support HTML5 video.
             </video>
         </div>
@@ -139,65 +128,50 @@
         const videoElement = document.getElementById('videoElement');
         const logcatbox = document.getElementById('logcatbox');
         
-        function updateInputLabel() {
-            const streamType = document.getElementById('streamTypeSelect').value;
-            const urlLabel = document.getElementById('urlLabel');
-            const sURL = document.getElementById('sURL');
-            
-            if (streamType === 'unicast') {
-                urlLabel.textContent = 'WebTransport Server URL:';
-                sURL.value = 'https://va01.wtmpeg.com/live';
-            } else if (streamType === 'multicast') {
-                urlLabel.textContent = 'Multicast Group Address:Port:';
-                sURL.value = '239.0.0.1:8888';
-            }
-        }
-        
         function player_connect() {
             if (player) {
                 player_disconnect();
             }
 
-            const url = document.getElementById('sURL').value;
-            const streamType = document.getElementById('streamTypeSelect').value;
+            const multicastAddress = document.getElementById('multicastAddress').value;
             
-            // Set up the correct URL for player
-            let playerUrl;
-            
-            // Check if this is a multicast connection
-            if (streamType === 'multicast' && typeof window.electron !== 'undefined') {
+            // Check if electron is available for multicast
+            if (typeof window.electron !== 'undefined') {
                 // Connect to multicast group using Electron IPC
-                window.electron.joinMulticast(url);
+                window.electron.joinMulticast(multicastAddress);
                 
                 // Log that we're trying to join the multicast group
-                const logEntry = `Attempting to join multicast group: ${url}`;
+                const logEntry = `Attempting to join multicast group: ${multicastAddress}`;
                 logcatbox.value += logEntry + '\n';
                 logcatbox.scrollTop = logcatbox.scrollHeight;
                 
                 // Set the player URL to the local WebSocket server
-                // For MPEGTS.js WebSocket consumption, we need to use ws:// protocol
-                playerUrl = 'ws://localhost:8080/mpegts';
-            } else {
-                // For regular unicast, use the provided URL
-                playerUrl = url;
-            }
-            
-            const mediaDataSource = {
-                type: 'mse',
-                hasVideo: true,
-                hasAudio: true,
-                url: playerUrl,
-                isLive: true
-            };
+                // For MPEGTS.js WebSocket consumption
+                const playerUrl = 'ws://localhost:8080/mpegts';
+                
+                const mediaDataSource = {
+                    type: 'mse',
+                    hasVideo: true,
+                    hasAudio: true,
+                    url: playerUrl,
+                    isLive: true
+                };
 
-            player = mpegts.createPlayer(mediaDataSource, {
-                enableWorker: true,
-                seekType: 'range'
-            });
-            
-            player.attachMediaElement(videoElement);
-            player.load();
-            player.play();
+                player = mpegts.createPlayer(mediaDataSource, {
+                    enableWorker: true,
+                    seekType: 'range'
+                });
+                
+                player.attachMediaElement(videoElement);
+                player.load();
+                player.play();
+            } else {
+                // Log error if electron is not available
+                const logEntry = 'Error: Electron is required for multicast support';
+                logcatbox.value += logEntry + '\n';
+                logcatbox.scrollTop = logcatbox.scrollHeight;
+                alert('This player requires Electron for multicast support.');
+            }
         }
 
         function player_disconnect() {
@@ -259,9 +233,9 @@
         });
 
         // Handle Enter key in URL input
-        document.getElementById('sURL').addEventListener('keyup', function(event) {
+        document.getElementById('multicastAddress').addEventListener('keyup', function(event) {
             if (event.key === 'Enter') {
-                player_load();
+                player_connect();
             }
         });
 
