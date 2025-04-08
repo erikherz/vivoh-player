@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld(
     },
     clearBuffer: () => {
       ipcRenderer.send('clear-buffer');
+    },
+    // Add shell.openExternal functionality
+    openExternal: (url) => {
+      shell.openExternal(url);
     },
     onMulticastJoined: (callback) => {
       // Remove any existing listeners to avoid duplicates
@@ -43,6 +47,12 @@ contextBridge.exposeInMainWorld(
       // Remove any existing listeners to avoid duplicates
       ipcRenderer.removeAllListeners('buffer-cleared');
       ipcRenderer.on('buffer-cleared', () => callback());
+    },
+    // Add protocol data handler for command line arguments
+    onProtocolData: (callback) => {
+      // Remove any existing listeners to avoid duplicates
+      ipcRenderer.removeAllListeners('protocol-data');
+      ipcRenderer.on('protocol-data', (_, data) => callback(data));
     }
   }
 );

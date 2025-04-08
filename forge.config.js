@@ -4,12 +4,17 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: true,
+    // Optional: Set executable name if desired
+    executableName: "VivohMulticastPlayer"
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        // Optional: Set name for installer
+        name: "VivohMulticastPlayer"
+      },
     },
     {
       name: '@electron-forge/maker-zip',
