@@ -108,6 +108,10 @@ const logcatbox = document.getElementById('logcatbox');
 let multicastAddress = "239.0.0.1:8888"; // Default value
 let autoConnected = false;
 let statusTimeoutId = null;
+let packetCounter = 0;
+let lastLoggedPacket = 0;
+let packetSizeTotal = 0;
+let startTime = Date.now();
 
 // Function to handle protocol arguments
 function handleProtocolArgument(arg) {
@@ -248,9 +252,26 @@ function setupElectronListeners() {
         
         // Listen for multicast data
         window.electron.onMulticastData((data) => {
-            const logEntry = `Received ${data.size} bytes from ${data.rinfo.address}:${data.rinfo.port}`;
-            logcatbox.value += logEntry + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
+            // Update counters
+            packetCounter++;
+            packetSizeTotal += data.size;
+
+            // Log specific packets: 1st, 10th, 100th, and every 100th after that
+            if (packetCounter === 1 || 
+                packetCounter === 10 || 
+                packetCounter === 100 || 
+                (packetCounter > 100 && packetCounter % 100 === 0)) {
+                
+                // Calculate bitrate
+                const elapsedSec = (Date.now() - startTime) / 1000;
+                const bitrateMbps = (packetSizeTotal * 8) / (elapsedSec * 1000000);
+                
+                const logEntry = `Packet #${packetCounter}: Received ${data.size} bytes (Avg bitrate: ${bitrateMbps.toFixed(2)} Mbps)`;
+                logcatbox.value += logEntry + '\n';
+                logcatbox.scrollTop = logcatbox.scrollHeight;
+                
+                lastLoggedPacket = packetCounter;
+            }
         });
         
         // Listen for protocol arguments from main process
