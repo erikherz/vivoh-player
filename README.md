@@ -6,12 +6,11 @@ npm install --save-dev electron
 npm start
 ```
 
-Multicast:
+Multicast Playback:
 ```
 > Install FFmpeg
 > Run: ffmpeg -re -stream_loop -1 -i video.mp4 -c copy -f mpegts "udp://239.0.0.1:8888?pkt_size=1316"
-> Select "Multicast"
-> Confirm or change the Group Address : Port and click Connect
+> open out/multicast-webtransport-player-darwin-arm64/multicast-webtransport-player.app --args globalUrl=fec://239.0.0.1:8888
 ```
 
 Buiilding a binary:
