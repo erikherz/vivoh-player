@@ -108,12 +108,138 @@ const logcatbox = document.getElementById('logcatbox');
 let multicastAddress = "239.0.0.1:8888"; // Default value
 let autoConnected = false;
 let statusTimeoutId = null;
+let lastPlayingState = false;
+let stuckCounter = 0;
+const maxStuckCount = 3; // Number of checks before considering player stuck
+
+// Add variables for packet tracking
 let packetCounter = 0;
 let lastLoggedPacket = 0;
 let packetSizeTotal = 0;
 let startTime = Date.now();
 
-// Function to handle protocol arguments
+// Add variables for watchdog timer
+let lastPacketTime = 0;
+let watchdogTimerId = null;
+const watchdogInterval = 2000; // Check every 2 seconds
+const maxAllowedSilence = 4000; // Reset if no packets for 4 seconds
+
+function startWatchdogTimer() {
+    // Clear any existing timer
+    if (watchdogTimerId) {
+        clearInterval(watchdogTimerId);
+    }
+    
+    // Set the initial packet time
+    lastPacketTime = Date.now();
+    lastPlayingState = false;
+    stuckCounter = 0;
+    
+    // Start a new timer
+    watchdogTimerId = setInterval(() => {
+        const now = Date.now();
+        const timeSinceLastPacket = now - lastPacketTime;
+        
+        // Check for packet timeout
+        if (timeSinceLastPacket > maxAllowedSilence && player) {
+            // No packets received for too long, reset the player
+            const logEntry = `No packets received for ${timeSinceLastPacket/1000} seconds. Resetting player...`;
+            logcatbox.value += logEntry + '\n';
+            logcatbox.scrollTop = logcatbox.scrollHeight;
+            
+            // Reset the player
+            resetPlayer();
+            return; // Exit early after reset
+        }
+        
+        // Check player state if we have packets but playback might be stuck
+        if (player && timeSinceLastPacket <= maxAllowedSilence) {
+            checkPlayerState();
+        }
+    }, watchdogInterval);
+    
+    const logEntry = "Enhanced watchdog timer started";
+    logcatbox.value += logEntry + '\n';
+    logcatbox.scrollTop = logcatbox.scrollHeight;
+}
+
+function checkPlayerState() {
+    // Skip if no video element or player
+    if (!videoElement || !player) return;
+    
+    // Get current state
+    const isCurrentlyPlaying = !videoElement.paused && 
+                              !videoElement.ended && 
+                              videoElement.readyState > 2 && // HAVE_CURRENT_DATA or better
+                              videoElement.error === null;
+    
+    // Check for buffer stalling
+    const bufferInfo = player.getBufferRange();
+    const hasBuffer = bufferInfo && bufferInfo.length > 0;
+    
+    // Check if receiving packets but not playing
+    if (Date.now() - lastPacketTime < 5000) { // Received packets in last 5 seconds
+        if (!isCurrentlyPlaying && hasBuffer) {
+            // We have data but player isn't playing - might be stuck
+            stuckCounter++;
+            
+            const logEntry = `Potential player stall detected (${stuckCounter}/${maxStuckCount}): ` +
+                            `Has buffer: ${hasBuffer}, Playing: ${isCurrentlyPlaying}`;
+            logcatbox.value += logEntry + '\n';
+            logcatbox.scrollTop = logcatbox.scrollHeight;
+            
+            if (stuckCounter >= maxStuckCount) {
+                const resetEntry = `Player appears stuck despite receiving data. Resetting player...`;
+                logcatbox.value += resetEntry + '\n';
+                logcatbox.scrollTop = logcatbox.scrollHeight;
+                
+                resetPlayer();
+                stuckCounter = 0;
+            }
+        } else {
+            // Player is working correctly or no buffer yet
+            stuckCounter = 0;
+        }
+    }
+    
+    // Update last known state
+    lastPlayingState = isCurrentlyPlaying;
+}
+
+function resetPlayer() {
+    // Disconnect player
+    player_disconnect();
+    
+    // Clear any video element error state
+    videoElement.error = null;
+    
+    // Force a browser repaint of the video element
+    videoElement.style.display = 'none';
+    // This forces a DOM reflow
+    void videoElement.offsetHeight;
+    videoElement.style.display = 'block';
+    
+    // Wait a moment before reconnecting
+    setTimeout(() => {
+        player_connect();
+    }, 2000);
+    
+    // Reset our counters
+    stuckCounter = 0;
+    lastPlayingState = false;
+}
+
+function resetDataCounters() {
+    packetCounter = 0;
+    packetSizeTotal = 0;
+    lastLoggedPacket = 0;
+    startTime = Date.now();
+    
+    const logEntry = "Data counters reset";
+    logcatbox.value += logEntry + '\n';
+    logcatbox.scrollTop = logcatbox.scrollHeight;
+}
+
 function handleProtocolArgument(arg) {
     if (arg) {
         // Log the received argument
@@ -149,6 +275,9 @@ function player_connect() {
         multicastAddress = addressInput.value;
     }
     
+    // Reset counters
+    resetDataCounters();
+    
     // Check if electron is available for multicast
     if (typeof window.electron !== 'undefined') {
         // Connect to multicast group using Electron IPC
@@ -179,6 +308,9 @@ function player_connect() {
         player.attachMediaElement(videoElement);
         player.load();
         player.play();
+        
+        // Start the watchdog timer
+        startWatchdogTimer();
     } else {
         // Log error if electron is not available
         const logEntry = 'Error: Electron is required for multicast support';
@@ -189,6 +321,16 @@ function player_connect() {
 }
 
 function player_disconnect() {
+    // Stop the watchdog timer
+    if (watchdogTimerId) {
+        clearInterval(watchdogTimerId);
+        watchdogTimerId = null;
+        
+        const logEntry = "Watchdog timer stopped";
+        logcatbox.value += logEntry + '\n';
+        logcatbox.scrollTop = logcatbox.scrollHeight;
+    }
+    
     if (player) {
         player.pause();
         player.unload();
@@ -250,8 +392,11 @@ function setupElectronListeners() {
             clearStatusAfterDelay(10000);
         });
         
-        // Listen for multicast data
+        // Listen for multicast data with improved logging
         window.electron.onMulticastData((data) => {
+            // Update the last packet time
+            lastPacketTime = Date.now();
+            
             // Update counters
             packetCounter++;
             packetSizeTotal += data.size;
