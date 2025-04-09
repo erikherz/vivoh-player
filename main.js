@@ -11,6 +11,7 @@ let multicastSocket = null;
 let webSocketServer = null;
 let httpServer = null;
 let expressApp = null;
+let multicastArgument = null;
 
 // Buffer to store multicast data
 const dataBuffer = {
@@ -32,6 +33,41 @@ const dataBuffer = {
     return [...this.packets];
   }
 };
+
+// Parse command line arguments
+function processArguments() {
+  // For packaged app (yourapp.exe $1)
+  if (process.defaultApp) {
+    // When running with electron directly, args start at index 2
+    if (process.argv.length >= 3) {
+      multicastArgument = process.argv[2];
+    }
+  } else {
+    // When running as packaged app, args start at index 1
+    if (process.argv.length >= 2) {
+      multicastArgument = process.argv[1];
+    }
+  }
+  
+  console.log('Raw command line argument:', multicastArgument);
+  
+  if (multicastArgument) {
+    // Extract the multicast address from the argument
+    // Format: "globalUrl=fec://239.0.0.1:8888"
+    let extractedAddress = multicastArgument;
+    
+    // Check if it contains the globalUrl prefix
+    if (multicastArgument.includes('globalUrl=')) {
+      const match = multicastArgument.match(/globalUrl=(?:fec:\/\/)?([^\/\s]+)/);
+      if (match && match[1]) {
+        extractedAddress = match[1];
+      }
+    }
+    
+    console.log('Extracted multicast address:', extractedAddress);
+    multicastArgument = extractedAddress;
+  }
+}
 
 // Create WebSocket server
 function createServer(port = 8080) {
@@ -113,6 +149,17 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
+  
+  // Send the multicast argument to the renderer when window is ready
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (multicastArgument) {
+      console.log(`Sending multicast argument to renderer: ${multicastArgument}`);
+      mainWindow.webContents.send('protocol-data', multicastArgument);
+      
+      // Auto-join the multicast group
+      joinMulticastGroup(multicastArgument);
+    }
+  });
   
   // Prevent garbage collection
   mainWindow.on('closed', () => {
@@ -244,16 +291,68 @@ function setupIPC() {
   });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  setupIPC();
-  
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+// Process the command line arguments before app is ready
+processArguments();
+
+// Single instance lock to prevent multiple instances
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Quit if another instance is already running
+  app.quit();
+} else {
+  // Handle second instance launch with arguments
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance with arguments
+    let secondInstanceArg = null;
+    
+    if (process.defaultApp) {
+      if (commandLine.length >= 3) {
+        secondInstanceArg = commandLine[2];
+      }
+    } else {
+      if (commandLine.length >= 2) {
+        secondInstanceArg = commandLine[1];
+      }
+    }
+    
+    if (secondInstanceArg) {
+      console.log('Second instance launched with arg:', secondInstanceArg);
+      
+      // Extract the multicast address if needed
+      if (secondInstanceArg.includes('globalUrl=')) {
+        const match = secondInstanceArg.match(/globalUrl=(?:fec:\/\/)?([^\/\s]+)/);
+        if (match && match[1]) {
+          secondInstanceArg = match[1];
+        }
+      }
+      
+      // Send to existing window
+      if (mainWindow) {
+        mainWindow.webContents.send('protocol-data', secondInstanceArg);
+        // Auto-join the new multicast group
+        joinMulticastGroup(secondInstanceArg);
+      }
+    }
+    
+    // Focus the existing window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(() => {
+    createWindow();
+    setupIPC();
+    
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   closeMulticastSocket();

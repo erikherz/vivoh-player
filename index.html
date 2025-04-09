@@ -3,7 +3,7 @@
 <head>
     <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
     <link rel="icon" href="data:;base64,=">
-    <title>Vivoh WebTransport Player</title>
+    <title>Vivoh WebTransport Multicast Player</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -24,37 +24,14 @@
             display: flex;
             align-items: center;
         }
-        .url-input input[type="text"] {
-            width: 400px;
-            padding: 8px;
-            margin: 0 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .url-input select {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
-        }
-        .url-input-label {
-            min-width: 220px;
-        }
         .logo-container {
             margin-right: 15px;
         }
-        .header-buttons {
-            margin-left: 10px;
-            display: flex;
-        }
-        .header-buttons button {
-            padding: 8px 16px;
-            margin-right: 10px;
-            border: none;
-            border-radius: 4px;
-            background: #007bff;
-            color: white;
-            cursor: pointer;
+        .status-display {
+            flex-grow: 1;
+            padding: 8px 12px;
+            font-weight: bold;
+            color: #333;
         }
         .video-container {
             margin: 0px 0;
@@ -66,21 +43,6 @@
             width: 100%;
             margin: 0 auto;
             display: block;
-        }
-        .controls {
-            margin: 20px 0;
-        }
-        .controls button {
-            padding: 8px 16px;
-            margin-right: 10px;
-            border: none;
-            border-radius: 4px;
-            background: #007bff;
-            color: white;
-            cursor: pointer;
-        }
-        .controls button:hover {
-            background: #0056b3;
         }
         .logcatBox {
             display: none;
@@ -99,189 +61,266 @@
             color: blue;
             text-decoration: underline;
         }
-
         .toggleLog:hover {
            color: darkblue;
+        }
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        .report-issue {
+            color: #0066cc;
+            text-decoration: underline;
+            cursor: pointer;
         }
     </style>
 </head>
 
 <body>
     <div class="mainContainer">
-        <div class="url-input">
+        <div class="header">
             <div class="logo-container">
                 <a href="https://vivoh.com"><img height="30" border="0" src="vivoh.png"></a>
             </div>
-            <select id="streamTypeSelect" onchange="updateInputLabel()">
-                <option value="unicast">Unicast</option>
-                <option value="multicast">Multicast</option>
-            </select>
-            <span id="urlLabel" class="url-input-label">WebTransport Server URL:</span>
-            <input id="sURL" type="text" value="https://va01.wtmpeg.com/live" />
-            <div class="header-buttons">
-                <button id="connectButton" onclick="player_connect()">Connect</button>
-                <button id="disconnectButton" onclick="player_disconnect()">Disconnect</button>
+            <div id="statusDisplay" class="status-display">
+                Waiting for multicast address...
             </div>
         </div>
         <div class="video-container">
-            <video id="videoElement" class="centeredVideo" controls playsinline>
+            <video id="videoElement" class="centeredVideo" playsinline>
                 Your browser is too old which doesn't support HTML5 video.
             </video>
         </div>
-        <a href="#" class="toggleLog" onclick="toggleLog(); return false;">Show Log</a><br/>
+        <div class="footer">
+            <a href="#" class="report-issue" onclick="openExternalLink('https://vivoh.com'); return false;">Report Issue</a>
+            <a href="#" class="toggleLog" onclick="toggleLog(); return false;">Show Log</a>
+        </div>
         <textarea id="logcatbox" class="logcatBox" rows="10" readonly></textarea>
     </div>
 
     <script src="wtmpeg.js"></script>
     <script>
-        mpegts.LoggingControl.enableAll = true;
-        let player = null;
-        const videoElement = document.getElementById('videoElement');
-        const logcatbox = document.getElementById('logcatbox');
+mpegts.LoggingControl.enableAll = true;
+let player = null;
+const videoElement = document.getElementById('videoElement');
+const logcatbox = document.getElementById('logcatbox');
+let multicastAddress = "239.0.0.1:8888"; // Default value
+let autoConnected = false;
+let statusTimeoutId = null;
+
+// Function to handle protocol arguments
+function handleProtocolArgument(arg) {
+    if (arg) {
+        // Log the received argument
+        const logEntry = `Received protocol argument: ${arg}`;
+        logcatbox.value += logEntry + '\n';
+        logcatbox.scrollTop = logcatbox.scrollHeight;
         
-        function updateInputLabel() {
-            const streamType = document.getElementById('streamTypeSelect').value;
-            const urlLabel = document.getElementById('urlLabel');
-            const sURL = document.getElementById('sURL');
-            
-            if (streamType === 'unicast') {
-                urlLabel.textContent = 'WebTransport Server URL:';
-                sURL.value = 'https://va01.wtmpeg.com/live';
-            } else if (streamType === 'multicast') {
-                urlLabel.textContent = 'Multicast Group Address:Port:';
-                sURL.value = '239.0.0.1:8888';
-            }
+        // Set it as the multicast address
+        multicastAddress = arg;
+        
+        // Update the input field value
+        const addressInput = document.getElementById('multicastAddress');
+        if (addressInput) {
+            addressInput.value = multicastAddress;
         }
         
-        function player_connect() {
-            if (player) {
-                player_disconnect();
-            }
-
-            const url = document.getElementById('sURL').value;
-            const streamType = document.getElementById('streamTypeSelect').value;
-            
-            // Set up the correct URL for player
-            let playerUrl;
-            
-            // Check if this is a multicast connection
-            if (streamType === 'multicast' && typeof window.electron !== 'undefined') {
-                // Connect to multicast group using Electron IPC
-                window.electron.joinMulticast(url);
-                
-                // Log that we're trying to join the multicast group
-                const logEntry = `Attempting to join multicast group: ${url}`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
-                
-                // Set the player URL to the local WebSocket server
-                // For MPEGTS.js WebSocket consumption, we need to use ws:// protocol
-                playerUrl = 'ws://localhost:8080/mpegts';
-            } else {
-                // For regular unicast, use the provided URL
-                playerUrl = url;
-            }
-            
-            const mediaDataSource = {
-                type: 'mse',
-                hasVideo: true,
-                hasAudio: true,
-                url: playerUrl,
-                isLive: true
-            };
-
-            player = mpegts.createPlayer(mediaDataSource, {
-                enableWorker: true,
-                seekType: 'range'
-            });
-            
-            player.attachMediaElement(videoElement);
-            player.load();
-            player.play();
+        // Auto-connect if not already connected
+        if (!autoConnected) {
+            player_connect();
+            autoConnected = true;
         }
+    }
+}
 
-        function player_disconnect() {
-            if (player) {
-                player.pause();
-                player.unload();
-                player.detachMediaElement();
-                player.destroy();
-                player = null;
-            }
-            
-            // If this is an Electron app, leave the multicast group
-            if (typeof window.electron !== 'undefined') {
-                window.electron.leaveMulticast();
-                
-                // Log that we're leaving the multicast group
-                const logEntry = 'Leaving multicast group';
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
-            }
-        }
+function player_connect() {
+    if (player) {
+        player_disconnect();
+    }
+
+    // Get multicast address from input or use the one from args
+    const addressInput = document.getElementById('multicastAddress');
+    if (addressInput) {
+        multicastAddress = addressInput.value;
+    }
+    
+    // Check if electron is available for multicast
+    if (typeof window.electron !== 'undefined') {
+        // Connect to multicast group using Electron IPC
+        window.electron.joinMulticast(multicastAddress);
         
-        // Setup electron IPC listeners if available
-        function setupElectronListeners() {
-            if (typeof window.electron !== 'undefined') {
-                // Listen for multicast join confirmation
-                window.electron.onMulticastJoined((address) => {
-                    const logEntry = `Successfully joined multicast group: ${address}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                });
-                
-                // Listen for multicast errors
-                window.electron.onMulticastError((error) => {
-                    const logEntry = `Multicast error: ${error}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                });
-                
-                // Listen for multicast data
-                window.electron.onMulticastData((data) => {
-                    const logEntry = `Received ${data.data.length} bytes from ${data.rinfo.address}:${data.rinfo.port}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    // Here you would process the multicast data as needed
-                    // This depends on what format your multicast data is in
-                });
-            }
-        }
+        // Log that we're trying to join the multicast group
+        const logEntry = `Attempting to join multicast group: ${multicastAddress}`;
+        logcatbox.value += logEntry + '\n';
+        logcatbox.scrollTop = logcatbox.scrollHeight;
         
-        // Call setupElectronListeners when the page loads
-        window.addEventListener('DOMContentLoaded', setupElectronListeners);
+        // Set the player URL to the local WebSocket server
+        // For MPEGTS.js WebSocket consumption
+        const playerUrl = 'ws://localhost:8080/mpegts';
+        
+        const mediaDataSource = {
+            type: 'mse',
+            hasVideo: true,
+            hasAudio: true,
+            url: playerUrl,
+            isLive: true
+        };
 
-        // Add log listener
-        mpegts.LoggingControl.addLogListener(function(type, str) {
-            logcatbox.value += str + '\n';
+        player = mpegts.createPlayer(mediaDataSource, {
+            enableWorker: true,
+            seekType: 'range'
+        });
+        
+        player.attachMediaElement(videoElement);
+        player.load();
+        player.play();
+    } else {
+        // Log error if electron is not available
+        const logEntry = 'Error: Electron is required for multicast support';
+        logcatbox.value += logEntry + '\n';
+        logcatbox.scrollTop = logcatbox.scrollHeight;
+        alert('This player requires Electron for multicast support.');
+    }
+}
+
+function player_disconnect() {
+    if (player) {
+        player.pause();
+        player.unload();
+        player.detachMediaElement();
+        player.destroy();
+        player = null;
+    }
+    
+    // If this is an Electron app, leave the multicast group
+    if (typeof window.electron !== 'undefined') {
+        window.electron.leaveMulticast();
+        
+        // Log that we're leaving the multicast group
+        const logEntry = 'Leaving multicast group';
+        logcatbox.value += logEntry + '\n';
+        logcatbox.scrollTop = logcatbox.scrollHeight;
+    }
+}
+
+// Function to clear status message after timeout
+function clearStatusAfterDelay(delay) {
+    // Clear any existing timeout
+    if (statusTimeoutId) {
+        clearTimeout(statusTimeoutId);
+    }
+    
+    // Set new timeout to clear the status message
+    statusTimeoutId = setTimeout(() => {
+        document.getElementById('statusDisplay').textContent = '';
+    }, delay);
+}
+
+// Setup electron IPC listeners if available
+function setupElectronListeners() {
+    if (typeof window.electron !== 'undefined') {
+        // Listen for multicast join confirmation
+        window.electron.onMulticastJoined((address) => {
+            const logEntry = `Successfully joined multicast group: ${address}`;
+            logcatbox.value += logEntry + '\n';
+            logcatbox.scrollTop = logcatbox.scrollHeight;
+            
+            // Update status display
+            document.getElementById('statusDisplay').textContent = `Connected to: ${address}`;
+            
+            // Set timeout to clear status message after 10 seconds
+            clearStatusAfterDelay(10000);
+        });
+        
+        // Listen for multicast errors
+        window.electron.onMulticastError((error) => {
+            const logEntry = `Multicast error: ${error}`;
+            logcatbox.value += logEntry + '\n';
+            logcatbox.scrollTop = logcatbox.scrollHeight;
+            
+            // Update status display with error
+            document.getElementById('statusDisplay').textContent = `Error: ${error}`;
+            
+            // Set timeout to clear status message after 10 seconds
+            clearStatusAfterDelay(10000);
+        });
+        
+        // Listen for multicast data
+        window.electron.onMulticastData((data) => {
+            const logEntry = `Received ${data.size} bytes from ${data.rinfo.address}:${data.rinfo.port}`;
+            logcatbox.value += logEntry + '\n';
             logcatbox.scrollTop = logcatbox.scrollHeight;
         });
-
-        // Handle Enter key in URL input
-        document.getElementById('sURL').addEventListener('keyup', function(event) {
-            if (event.key === 'Enter') {
-                player_load();
-            }
-        });
-
-        function toggleLog() {
-            var logBox = document.getElementById("logcatbox");
-            var toggleLink = document.querySelector(".toggleLog");
-
-            if (logBox.style.display === "none" || logBox.style.display === "") {
-                logBox.style.display = "block";
-                toggleLink.textContent = "Hide Log";
-
-                // Scroll the page down to the bottom
-                setTimeout(() => {
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }, 0);
-            } else {
-                logBox.style.display = "none";
-                toggleLink.textContent = "Show Log";
-            }
+        
+        // Listen for protocol arguments from main process
+        if (window.electron.onProtocolData) {
+            window.electron.onProtocolData((arg) => {
+                handleProtocolArgument(arg);
+            });
         }
+    }
+}
+
+// Call setupElectronListeners when the page loads
+window.addEventListener('DOMContentLoaded', () => {
+    setupElectronListeners();
+    
+    // Check if there's a startup argument in localStorage
+    // This is a fallback method if IPC isn't set up yet
+    const savedArg = localStorage.getItem('startupArg');
+    if (savedArg) {
+        handleProtocolArgument(savedArg);
+        localStorage.removeItem('startupArg'); // Clear after use
+    }
+});
+
+// Add log listener
+mpegts.LoggingControl.addLogListener(function(type, str) {
+    logcatbox.value += str + '\n';
+    logcatbox.scrollTop = logcatbox.scrollHeight;
+});
+
+// Handle Enter key in URL input
+document.getElementById('multicastAddress').addEventListener('keyup', function(event) {
+    if (event.key === 'Enter') {
+        player_connect();
+    }
+});
+
+function toggleLog() {
+    var logBox = document.getElementById("logcatbox");
+    var toggleLink = document.querySelector(".toggleLog");
+
+    if (logBox.style.display === "none" || logBox.style.display === "") {
+        logBox.style.display = "block";
+        toggleLink.textContent = "Hide Log";
+
+        // Scroll the page down to the bottom
+        setTimeout(() => {
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }, 0);
+    } else {
+        logBox.style.display = "none";
+        toggleLink.textContent = "Show Log";
+    }
+}
+
+// Function to open external links in default browser
+function openExternalLink(url) {
+    // Check if electron is available and has the shell.openExternal method
+    if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
+        window.electron.openExternal(url);
+    } else {
+        // Fallback for when running in a regular browser
+        window.open(url, '_blank');
+    }
+}
+
+// Expose a global function for the main process to call via preload
+window.setMulticastAddress = function(address) {
+    handleProtocolArgument(address);
+};
     </script>
 </body>
 </html>
