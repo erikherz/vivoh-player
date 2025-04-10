@@ -46,26 +46,6 @@
             margin: 0 auto;
             display: block;
         }
-        .logcatBox {
-            display: none;
-            width: 98%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: monospace;
-            background: #f8f9fa;
-        }
-        .toggleLog {
-            display: block;
-            text-align: left;
-            margin-top: 5px;
-            cursor: pointer;
-            color: #0066cc;
-            text-decoration: underline;
-        }
-        .toggleLog:hover {
-           color: darkblue;
-        }
         .footer {
             display: flex;
             justify-content: space-between;
@@ -244,9 +224,6 @@
             <div class="logo-container">
                 <a href="https://vivoh.com"><img height="30" border="0" src="vivoh.png"></a>
             </div>
-            <div id="statusDisplay" class="status-display">
-                Waiting for multicast address...
-            </div>
         </div>
         <div class="video-container">
             <video id="videoElement" class="centeredVideo" playsinline>
@@ -266,10 +243,8 @@
             </div>
         </div>
         <div class="footer">
-            <a href="#" class="toggleLog" onclick="toggleLog(); return false;">Show Log</a>
             <a href="#" class="report-issue" onclick="openExternalLink('https://vivoh.com'); return false;">Report Issue</a>
         </div>
-        <textarea id="logcatbox" class="logcatBox" rows="10" readonly></textarea>
     </div>
     
     <!-- QR Code Overlay -->
@@ -293,7 +268,6 @@
         // Core variables
         let player = null;
         const videoElement = document.getElementById('videoElement');
-        const logcatbox = document.getElementById('logcatbox');
         let multicastAddress = "239.0.0.1:8888"; // Default value
         let autoConnected = false;
         let statusTimeoutId = null;
@@ -337,7 +311,8 @@
             updateVolumeIcon();
             logToConsole("Video controls initialized");
         }
-        
+    
+
         function togglePlayPause() {
             if (videoElement.paused) {
                 videoElement.play().catch(e => {
@@ -420,24 +395,7 @@
             player_connect();
             logToConsole("Manual connection retry initiated by user");
         }
-        
-        // ----- UI Functions -----
-        function toggleLog() {
-            const logBox = document.getElementById("logcatbox");
-            const toggleLink = document.querySelector(".toggleLog");
-        
-            if (logBox.style.display === "none" || logBox.style.display === "") {
-                logBox.style.display = "block";
-                toggleLink.textContent = "Hide Log";
-                setTimeout(() => {
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }, 0);
-            } else {
-                logBox.style.display = "none";
-                toggleLink.textContent = "Show Log";
-            }
-        }
-        
+
         function openExternalLink(url) {
             console.log(`Opening external link: ${url}`);
             if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
@@ -476,20 +434,47 @@
                 window.open(url, '_blank');
             }
         }
+    
         
-        function clearStatusAfterDelay(delay) {
-            if (statusTimeoutId) {
-                clearTimeout(statusTimeoutId);
-            }
-            statusTimeoutId = setTimeout(() => {
-                document.getElementById('statusDisplay').textContent = '';
-            }, delay);
+// Updated logToConsole function to send logs to the separate log window
+function logToConsole(message) {
+    // Log to browser console for development purposes
+    console.log(message);
+    
+    // Send to log window if we're in Electron
+    if (typeof window.electron !== 'undefined' && window.electron.sendLogMessage) {
+        // Attempt to determine log type based on message content
+        let logType = 'info';
+        
+        // Check for various error indicators in the message
+        if (message.toLowerCase().includes('error') || 
+            message.toLowerCase().includes('failed') || 
+            message.toLowerCase().includes('exception') ||
+            message.toLowerCase().includes('critical')) {
+            logType = 'error';
+        } 
+        // Check for warning indicators
+        else if (message.toLowerCase().includes('warning') || 
+                 message.toLowerCase().includes('could not') ||
+                 message.toLowerCase().includes('retry')) {
+            logType = 'warning';
         }
         
-        function logToConsole(message) {
-            logcatbox.value += message + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
-        }
+        // Send the message with appropriate type
+        window.electron.sendLogMessage(message, logType);
+    }
+}
+
+// Function to open the log window
+function openLogWindow() {
+    // Check if we're running in Electron environment
+    if (typeof window.electron !== 'undefined' && window.electron.openLogWindow) {
+        logToConsole('Opening log window...');
+        window.electron.openLogWindow();
+    } else {
+        console.warn('Log window functionality is only available in Electron environment');
+    }
+}
         
         // ----- Protocol Handling -----
         function handleProtocolArgument(arg) {
@@ -537,7 +522,7 @@
                 resetCounters();
                 
                 // Update UI
-                document.getElementById('statusDisplay').textContent = `Connecting to: ${multicastAddress}`;
+                logToConsole(`Connecting to: ${multicastAddress}`);
                 
                 // Check for Electron environment
                 if (typeof window.electron !== 'undefined') {
@@ -600,12 +585,10 @@
                     startWatchdogTimer();
                 } else {
                     logToConsole('Error: Electron is required for multicast support');
-                    document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
                     alert('This player requires Electron for multicast support.');
                 }
             } catch (e) {
                 logToConsole(`Connection error: ${e.message}`);
-                document.getElementById('statusDisplay').textContent = `Connection error: ${e.message}`;
                 // If we failed to even start connecting, increment failure counter
                 consecutiveFailures++;
             }
@@ -816,7 +799,7 @@
             
             logToConsole("Enhanced watchdog timer started");
         }
-        
+
         // ----- Electron IPC Listeners -----
         function setupElectronListeners() {
             if (typeof window.electron !== 'undefined') {
@@ -825,15 +808,11 @@
                 // Listen for multicast join confirmation
                 window.electron.onMulticastJoined((address) => {
                     logToConsole(`Successfully joined multicast group: ${address}`);
-                    document.getElementById('statusDisplay').textContent = `Connected to: ${address}`;
-                    clearStatusAfterDelay(10000);
                 });
                 
                 // Listen for multicast errors
                 window.electron.onMulticastError((error) => {
                     logToConsole(`Multicast error: ${error}`);
-                    document.getElementById('statusDisplay').textContent = `Error: ${error}`;
-                    clearStatusAfterDelay(10000);
                 });
                 
                 // Listen for multicast data
@@ -874,15 +853,11 @@
                 }
             } else {
                 logToConsole("Electron not detected. WebTransport multicast requires Electron.");
-                document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
             }
         }
         
         // ----- Error Detection in Logs -----
-        mpegts.LoggingControl.addLogListener(function(type, str) {
-            logcatbox.value += str + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
-            
+        mpegts.LoggingControl.addLogListener(function(type, str) {            
             // Detect critical errors in logs
             if (str.includes("Fatal error") || 
                 str.includes("MediaSource Error") || 
@@ -901,10 +876,6 @@
                 retryCounter = 0;
                 player_connect();
                 autoConnected = true;
-                
-                // Make the log visible by default
-                document.getElementById("logcatbox").style.display = "block";
-                document.querySelector(".toggleLog").textContent = "Hide Log";
             }
         }
         
