@@ -439,9 +439,40 @@
         }
         
         function openExternalLink(url) {
+            console.log(`Opening external link: ${url}`);
             if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
-                window.electron.openExternal(url);
+                console.log('Using Electron shell.openExternal');
+                try {
+                    // Add target="_blank" attribute to trigger the window open handler
+                    // This ensures the link is properly intercepted by setWindowOpenHandler in main.js
+                    const a = document.createElement('a');
+                    a.setAttribute('href', url);
+                    a.setAttribute('target', '_blank');
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    // Log success (this won't actually wait for confirmation)
+                    logToConsole(`Requested to open external link: ${url}`);
+                } catch (e) {
+                    console.error('Exception when opening link with Electron:', e);
+                    logToConsole(`Exception when opening with Electron: ${e.message}`);
+                    
+                    // Fall back to direct API call if the click approach fails
+                    window.electron.openExternal(url)
+                        .then(() => {
+                            logToConsole(`Successfully opened external link via fallback: ${url}`);
+                        })
+                        .catch(error => {
+                            console.error('Error opening link with Electron:', error);
+                            logToConsole(`Error opening with Electron: ${error.message}`);
+                            // Fall back to browser
+                            window.open(url, '_blank');
+                        });
+                }
             } else {
+                console.log('Using browser window.open');
                 window.open(url, '_blank');
             }
         }
