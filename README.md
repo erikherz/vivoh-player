@@ -10,7 +10,10 @@ Multicast Playback:
 ```
 > Install FFmpeg
 > Run: ffmpeg -re -stream_loop -1 -i video.mp4 -c copy -f mpegts "udp://239.0.0.1:8888?pkt_size=1316"
-> open out/multicast-webtransport-player-darwin-arm64/multicast-webtransport-player.app --args globalUrl=fec://239.0.0.1:8888
+MacOS:
+open out/multicast-webtransport-player-darwin-arm64/multicast-webtransport-player.app --args globalUrl=fec://239.0.0.1:8888
+Windows:
+"out\multicast-webtransport-player-win32-x64\multicast-webtransport-player.exe" globalUrl=fec://239.0.0.1:8888
 ```
 
 Buiilding a binary:
