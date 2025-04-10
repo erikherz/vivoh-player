@@ -322,6 +322,12 @@ function joinMulticastGroup(addressPort) {
 
 // Handle IPC messages from renderer
 function setupIPC() {
+
+  ipcMain.on('open-log-window', () => {
+    console.log('Request to open log window');
+    createLogWindow();
+  });
+  
   ipcMain.on('join-multicast', (event, addressPort) => {
     console.log(`Request to join multicast group: ${addressPort}`);
     joinMulticastGroup(addressPort);

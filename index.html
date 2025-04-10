@@ -224,9 +224,6 @@
             <div class="logo-container">
                 <a href="https://vivoh.com"><img height="30" border="0" src="vivoh.png"></a>
             </div>
-            <div id="statusDisplay" class="status-display">
-                Waiting for multicast address...
-            </div>
         </div>
         <div class="video-container">
             <video id="videoElement" class="centeredVideo" playsinline>
@@ -271,7 +268,6 @@
         // Core variables
         let player = null;
         const videoElement = document.getElementById('videoElement');
-        const logcatbox = document.getElementById('logcatbox');
         let multicastAddress = "239.0.0.1:8888"; // Default value
         let autoConnected = false;
         let statusTimeoutId = null;
@@ -399,7 +395,7 @@
             player_connect();
             logToConsole("Manual connection retry initiated by user");
         }
-        
+
         function openExternalLink(url) {
             console.log(`Opening external link: ${url}`);
             if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
@@ -438,15 +434,7 @@
                 window.open(url, '_blank');
             }
         }
-        
-        function clearStatusAfterDelay(delay) {
-            if (statusTimeoutId) {
-                clearTimeout(statusTimeoutId);
-            }
-            statusTimeoutId = setTimeout(() => {
-                document.getElementById('statusDisplay').textContent = '';
-            }, delay);
-        }
+    
         
 // Updated logToConsole function to send logs to the separate log window
 function logToConsole(message) {
@@ -534,7 +522,7 @@ function openLogWindow() {
                 resetCounters();
                 
                 // Update UI
-                document.getElementById('statusDisplay').textContent = `Connecting to: ${multicastAddress}`;
+                logToConsole(`Connecting to: ${multicastAddress}`);
                 
                 // Check for Electron environment
                 if (typeof window.electron !== 'undefined') {
@@ -597,12 +585,10 @@ function openLogWindow() {
                     startWatchdogTimer();
                 } else {
                     logToConsole('Error: Electron is required for multicast support');
-                    document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
                     alert('This player requires Electron for multicast support.');
                 }
             } catch (e) {
                 logToConsole(`Connection error: ${e.message}`);
-                document.getElementById('statusDisplay').textContent = `Connection error: ${e.message}`;
                 // If we failed to even start connecting, increment failure counter
                 consecutiveFailures++;
             }
@@ -813,7 +799,7 @@ function openLogWindow() {
             
             logToConsole("Enhanced watchdog timer started");
         }
-        
+
         // ----- Electron IPC Listeners -----
         function setupElectronListeners() {
             if (typeof window.electron !== 'undefined') {
@@ -822,15 +808,11 @@ function openLogWindow() {
                 // Listen for multicast join confirmation
                 window.electron.onMulticastJoined((address) => {
                     logToConsole(`Successfully joined multicast group: ${address}`);
-                    document.getElementById('statusDisplay').textContent = `Connected to: ${address}`;
-                    clearStatusAfterDelay(10000);
                 });
                 
                 // Listen for multicast errors
                 window.electron.onMulticastError((error) => {
                     logToConsole(`Multicast error: ${error}`);
-                    document.getElementById('statusDisplay').textContent = `Error: ${error}`;
-                    clearStatusAfterDelay(10000);
                 });
                 
                 // Listen for multicast data
@@ -871,15 +853,11 @@ function openLogWindow() {
                 }
             } else {
                 logToConsole("Electron not detected. WebTransport multicast requires Electron.");
-                document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
             }
         }
         
         // ----- Error Detection in Logs -----
-        mpegts.LoggingControl.addLogListener(function(type, str) {
-            logcatbox.value += str + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
-            
+        mpegts.LoggingControl.addLogListener(function(type, str) {            
             // Detect critical errors in logs
             if (str.includes("Fatal error") || 
                 str.includes("MediaSource Error") || 

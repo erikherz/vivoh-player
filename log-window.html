@@ -237,7 +237,7 @@
         saveButton.addEventListener('click', saveLog);
         
         // Listen for messages from main process
-        window.electron.onLogMessage((logData) => {
+        window.electron.onNewLogMessage((logData) => {
             addLogEntry(logData.message, logData.type || 'info');
         });
         
