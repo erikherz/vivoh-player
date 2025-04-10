@@ -18,6 +18,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
         }
         .url-input {
             margin-bottom: 20px;
@@ -74,6 +75,68 @@
             text-decoration: underline;
             cursor: pointer;
         }
+        
+        /* QR Code Overlay Styles */
+        .overlay-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .overlay-content {
+            width: 30%;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.5s ease-out;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .qr-code {
+            margin: 20px auto;
+            width: 200px;
+            height: 200px;
+        }
+        
+        .overlay-message {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .retry-button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 15px;
+        }
+        
+        .retry-button:hover {
+            background-color: #0055aa;
+        }
     </style>
 </head>
 
@@ -98,322 +161,127 @@
         </div>
         <textarea id="logcatbox" class="logcatBox" rows="10" readonly></textarea>
     </div>
+    
+    <!-- QR Code Overlay -->
+    <div id="qrOverlay" class="overlay-container">
+        <div class="overlay-content">
+            <h2>Connection Error</h2>
+            <p class="overlay-message">There is an issue with the broadcast, please join Webex on your mobile device by scanning this QR code.</p>
+            <div id="qrCode" class="qr-code">
+                <!-- QR code will be generated here -->
+            </div>
+            <button class="retry-button" onclick="retryConnection()">Retry Connection</button>
+        </div>
+    </div>
 
     <script src="wtmpeg.js"></script>
+    <script src="qrcode.min.js"></script>
     <script>
+        // Enable logging for mpegts.js
         mpegts.LoggingControl.enableAll = true;
+        
+        // Core variables
         let player = null;
         const videoElement = document.getElementById('videoElement');
         const logcatbox = document.getElementById('logcatbox');
         let multicastAddress = "239.0.0.1:8888"; // Default value
         let autoConnected = false;
         let statusTimeoutId = null;
-        let lastPlayingState = false;
-        let stuckCounter = 0;
-        const maxStuckCount = 3; // Number of checks before considering player stuck
         
-        // Add variables for packet tracking
-        let packetCounter = 0;
-        let lastLoggedPacket = 0;
-        let packetSizeTotal = 0;
-        let startTime = Date.now();
-        
-        // Add variables for watchdog timer
+        // Connection state and recovery
         let lastPacketTime = 0;
         let watchdogTimerId = null;
-        const watchdogInterval = 2000; // Check every 2 seconds
-        const maxAllowedSilence = 4000; // Reset if no packets for 4 seconds
+        let retryCounter = 0;
+        const maxRetries = 3;
+        let consecutiveFailures = 0;
         
-        // Add variables for video frame freeze detection
-        let lastVideoFrameTime = 0;
-        let lastFrameData = null;
-        let frameStuckCounter = 0;
-        const maxFrameStuckCount = 3; // Number of checks before considering video frozen
+        // Metrics
+        let packetCounter = 0;
+        let startTime = Date.now();
         
-        // Initialize global variables for tracking video time
-        window.lastVideoCurrentTime = 0;
+        // Webex URL for QR code
+        const webexUrl = "https://webcast.fpl.com";
         
-        function startWatchdogTimer() {
-            // Clear any existing timer
-            if (watchdogTimerId) {
-                clearInterval(watchdogTimerId);
+        // ----- QR Code Functions -----
+        function generateQRCode() {
+            document.getElementById('qrCode').innerHTML = '';
+            new QRCode(document.getElementById('qrCode'), {
+                text: webexUrl,
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            logToConsole(`QR code generated with URL: ${webexUrl}`);
+        }
+        
+        function showQRCodeOverlay() {
+            const overlay = document.getElementById('qrOverlay');
+            overlay.style.display = 'flex';
+            generateQRCode();
+            logToConsole("QR code overlay shown after maximum retries");
+        }
+        
+        function hideQRCodeOverlay() {
+            const overlay = document.getElementById('qrOverlay');
+            overlay.style.display = 'none';
+            logToConsole("QR code overlay hidden");
+        }
+        
+        function retryConnection() {
+            retryCounter = 0;
+            hideQRCodeOverlay();
+            player_connect();
+            logToConsole("Manual connection retry initiated by user");
+        }
+        
+        // ----- UI Functions -----
+        function toggleLog() {
+            const logBox = document.getElementById("logcatbox");
+            const toggleLink = document.querySelector(".toggleLog");
+        
+            if (logBox.style.display === "none" || logBox.style.display === "") {
+                logBox.style.display = "block";
+                toggleLink.textContent = "Hide Log";
+                setTimeout(() => {
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }, 0);
+            } else {
+                logBox.style.display = "none";
+                toggleLink.textContent = "Show Log";
             }
-            
-            // Set the initial packet time
-            lastPacketTime = Date.now();
-            lastPlayingState = false;
-            stuckCounter = 0;
-            
-            // Reset frame freeze detection
-            lastFrameData = null;
-            frameStuckCounter = 0;
-            lastVideoFrameTime = 0;
-            window.lastVideoCurrentTime = 0;
-            
-            // Start a new timer
-            watchdogTimerId = setInterval(() => {
-                const now = Date.now();
-                const timeSinceLastPacket = now - lastPacketTime;
-                
-                // Check for packet timeout
-                if (timeSinceLastPacket > maxAllowedSilence && player) {
-                    // No packets received for too long, reset the player
-                    const logEntry = `No packets received for ${timeSinceLastPacket/1000} seconds. Resetting player...`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    // Reset the player
-                    resetPlayer();
-                    return; // Exit early after reset
-                }
-                
-                // Check player state if we have packets but playback might be stuck
-                if (player && timeSinceLastPacket <= maxAllowedSilence) {
-                    checkPlayerState();
-                    
-                    // Check for video freeze every other interval (4 seconds)
-                    // to reduce performance impact
-                    if (now % (watchdogInterval * 2) < watchdogInterval) {
-                        checkForFrozenVideo();
-                    }
-                }
-            }, watchdogInterval);
-            
-            const logEntry = "Enhanced watchdog timer started";
-            logcatbox.value += logEntry + '\n';
+        }
+        
+        function openExternalLink(url) {
+            if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
+                window.electron.openExternal(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+        
+        function clearStatusAfterDelay(delay) {
+            if (statusTimeoutId) {
+                clearTimeout(statusTimeoutId);
+            }
+            statusTimeoutId = setTimeout(() => {
+                document.getElementById('statusDisplay').textContent = '';
+            }, delay);
+        }
+        
+        function logToConsole(message) {
+            logcatbox.value += message + '\n';
             logcatbox.scrollTop = logcatbox.scrollHeight;
         }
         
-        function checkPlayerState() {
-            // Skip if no video element or player
-            if (!videoElement || !player) return;
-            
-            // Get current state
-            const isCurrentlyPlaying = !videoElement.paused && 
-                                      !videoElement.ended && 
-                                      videoElement.readyState > 2 && // HAVE_CURRENT_DATA or better
-                                      videoElement.error === null;
-            
-            // Check for buffer stalling
-            const bufferInfo = player.getBufferRange();
-            const hasBuffer = bufferInfo && bufferInfo.length > 0;
-            
-            // Check if receiving packets but not playing
-            if (Date.now() - lastPacketTime < 5000) { // Received packets in last 5 seconds
-                if (!isCurrentlyPlaying && hasBuffer) {
-                    // We have data but player isn't playing - might be stuck
-                    stuckCounter++;
-                    
-                    const logEntry = `Potential player stall detected (${stuckCounter}/${maxStuckCount}): ` +
-                                    `Has buffer: ${hasBuffer}, Playing: ${isCurrentlyPlaying}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    if (stuckCounter >= maxStuckCount) {
-                        const resetEntry = `Player appears stuck despite receiving data. Resetting player...`;
-                        logcatbox.value += resetEntry + '\n';
-                        logcatbox.scrollTop = logcatbox.scrollHeight;
-                        
-                        resetPlayer();
-                        stuckCounter = 0;
-                    }
-                } else {
-                    // Player is working correctly or no buffer yet
-                    stuckCounter = 0;
-                }
-            }
-            
-            // Update last known state
-            lastPlayingState = isCurrentlyPlaying;
-        }
-        
-        // Function to detect frozen video frames with enhanced detection strategies
-        function checkForFrozenVideo() {
-            // Skip if no video element or player, or if video is paused/not playing
-            if (!videoElement || !player || videoElement.paused || videoElement.ended) return;
-            
-            // ===== STRATEGY 1: Detect consecutive audio frame drops =====
-            // Check if we have recent "Dropping audio frame" messages in the log
-            const logText = logcatbox.value;
-            const lastLogLines = logText.split('\n').slice(-20).join('\n'); // Get last 20 log lines
-            const droppingFrameMatches = lastLogLines.match(/Dropping \d+ audio frame/g);
-            
-            if (droppingFrameMatches && droppingFrameMatches.length > 10) {
-                // Many consecutive audio frame drops often indicate desync issues
-                const logEntry = `Detected ${droppingFrameMatches.length} audio frame drops in recent logs. Potential stream desync.`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
-                
-                resetPlayer();
-                return; // Exit early after reset
-            }
-            
-            // ===== STRATEGY 2: Monitor video currentTime for stalling =====
-            // Track if video time is advancing
-            const now = Date.now();
-            if (lastVideoFrameTime > 0) {
-                const currentTime = videoElement.currentTime;
-                
-                // If current time hasn't changed in 3+ seconds but we're receiving packets
-                if (Math.abs(currentTime - window.lastVideoCurrentTime) < 0.01 && 
-                    (now - lastVideoFrameTime) > 3000 && 
-                    (now - lastPacketTime) < 2000) {
-                    
-                    frameStuckCounter++;
-                    
-                    const logEntry = `Video time stalled: ${currentTime.toFixed(2)}s hasn't changed in ${((now - lastVideoFrameTime)/1000).toFixed(1)}s (${frameStuckCounter}/${maxFrameStuckCount})`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    if (frameStuckCounter >= maxFrameStuckCount) {
-                        const resetEntry = `Video playback time stalled but receiving packets. Resetting player...`;
-                        logcatbox.value += resetEntry + '\n';
-                        logcatbox.scrollTop = logcatbox.scrollHeight;
-                        
-                        resetPlayer();
-                        return; // Exit early after reset
-                    }
-                } else if (Math.abs(currentTime - window.lastVideoCurrentTime) >= 0.01) {
-                    // Video time is advancing, reset counter
-                    frameStuckCounter = 0;
-                    window.lastVideoCurrentTime = currentTime;
-                }
-            }
-            
-            // ===== STRATEGY 3: Canvas-based pixel comparison =====
-            // This is a fallback for when the timing-based checks don't catch issues
-            // Skip if video dimensions aren't available yet
-            const width = videoElement.videoWidth;
-            const height = videoElement.videoHeight;
-            if (width === 0 || height === 0) {
-                return;
-            }
-            
-            // Create a temporary canvas to grab the current frame
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            
-            // Draw the current frame to canvas
-            try {
-                ctx.drawImage(videoElement, 0, 0, width, height);
-                
-                // Get frame data for comparison 
-                // Use a small sample region from the center of the frame for efficiency
-                const sampleSize = Math.min(50, Math.floor(width/4), Math.floor(height/4));
-                const x = Math.floor((width - sampleSize) / 2);
-                const y = Math.floor((height - sampleSize) / 2);
-                const frameData = ctx.getImageData(x, y, sampleSize, sampleSize).data;
-                
-                // If we have a previous frame to compare with
-                if (lastFrameData !== null) {
-                    // Check if the current frame is identical to the last frame
-                    let identical = true;
-                    // Compare a subset of pixels for performance
-                    const sampleInterval = 10; // Check every 10th pixel
-                    const pixelCount = frameData.length / 4; // RGBA values
-                    
-                    for (let i = 0; i < pixelCount; i += sampleInterval) {
-                        const idx = i * 4; // Convert to RGBA index
-                        if (frameData[idx] !== lastFrameData[idx] || 
-                            frameData[idx+1] !== lastFrameData[idx+1] || 
-                            frameData[idx+2] !== lastFrameData[idx+2]) {
-                            identical = false;
-                            break;
-                        }
-                    }
-                    
-                    // If frames are identical but audio seems to be playing, 
-                    // increment counter (but only if we haven't already incremented it above)
-                    if (identical && videoElement.currentTime > 0 && !videoElement.paused && frameStuckCounter === 0) {
-                        frameStuckCounter++;
-                        
-                        // Log when we detect potential freezing
-                        if (frameStuckCounter === 1 || frameStuckCounter === maxFrameStuckCount) {
-                            const logEntry = `Potential video freeze detected (${frameStuckCounter}/${maxFrameStuckCount}): ` +
-                                           `Audio playing but video frame not changing`;
-                            logcatbox.value += logEntry + '\n';
-                            logcatbox.scrollTop = logcatbox.scrollHeight;
-                        }
-                        
-                        // If we've detected multiple identical frames while audio plays,
-                        // the video is likely frozen
-                        if (frameStuckCounter >= maxFrameStuckCount) {
-                            const resetEntry = `Video appears frozen while audio continues. Resetting player...`;
-                            logcatbox.value += resetEntry + '\n';
-                            logcatbox.scrollTop = logcatbox.scrollHeight;
-                            
-                            resetPlayer();
-                        }
-                    }
-                }
-                
-                // Save current frame data for next comparison
-                lastFrameData = frameData;
-                lastVideoFrameTime = Date.now();
-            } catch (e) {
-                // Handle any errors in frame capture (e.g., cross-origin issues)
-                const logEntry = `Error capturing video frame: ${e.message}`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
-                
-                // Reset frame tracking on error
-                lastFrameData = null;
-            }
-        }
-        
-        function resetPlayer() {
-            // Disconnect player
-            player_disconnect();
-            
-            // Clear any video element error state
-            videoElement.error = null;
-            
-            // Force a browser repaint of the video element
-            videoElement.style.display = 'none';
-            // This forces a DOM reflow
-            void videoElement.offsetHeight;
-            videoElement.style.display = 'block';
-            
-            // Wait a moment before reconnecting
-            setTimeout(() => {
-                player_connect();
-            }, 2000);
-            
-            // Reset our counters
-            stuckCounter = 0;
-            lastPlayingState = false;
-            
-            // Reset frame tracking
-            lastFrameData = null;
-            frameStuckCounter = 0;
-            lastVideoFrameTime = 0;
-            window.lastVideoCurrentTime = 0;
-        }
-        
-        function resetDataCounters() {
-            packetCounter = 0;
-            packetSizeTotal = 0;
-            lastLoggedPacket = 0;
-            startTime = Date.now();
-            
-            const logEntry = "Data counters reset";
-            logcatbox.value += logEntry + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
-        }
-        
+        // ----- Protocol Handling -----
         function handleProtocolArgument(arg) {
             if (arg) {
-                // Log the received argument
-                const logEntry = `Received protocol argument: ${arg}`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
-                
-                // Set it as the multicast address
+                logToConsole(`Received protocol argument: ${arg}`);
                 multicastAddress = arg;
                 
-                // Auto-connect if not already connected
                 if (!autoConnected) {
                     player_connect();
                     autoConnected = true;
@@ -421,65 +289,110 @@
             }
         }
         
+        // Expose global function for the main process
+        window.setMulticastAddress = function(address) {
+            handleProtocolArgument(address);
+        };
+        
+        // ----- Player Connection Functions -----
+        function resetCounters() {
+            packetCounter = 0;
+            startTime = Date.now();
+            lastPacketTime = Date.now();
+            logToConsole("Counters reset");
+        }
+        
+        function resetRetryCounters() {
+            retryCounter = 0;
+            consecutiveFailures = 0;
+            
+            if (document.getElementById('qrOverlay').style.display === 'flex') {
+                hideQRCodeOverlay();
+            }
+        }
+        
         function player_connect() {
             try {
+                // First ensure any existing player is properly disconnected
                 if (player) {
                     player_disconnect();
                 }
                 
-                // Reset counters
-                resetDataCounters();
+                // Reset counters for a fresh start
+                resetCounters();
                 
-                // Update the status display immediately
+                // Update UI
                 document.getElementById('statusDisplay').textContent = `Connecting to: ${multicastAddress}`;
                 
-                // Check if electron is available for multicast
+                // Check for Electron environment
                 if (typeof window.electron !== 'undefined') {
-                    // Connect to multicast group using Electron IPC
+                    // Request to join multicast group first
                     window.electron.joinMulticast(multicastAddress);
+                    logToConsole(`Attempting to join multicast group: ${multicastAddress}`);
                     
-                    // Log that we're trying to join the multicast group
-                    const logEntry = `Attempting to join multicast group: ${multicastAddress}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    // Set the player URL to the local WebSocket server
-                    // For MPEGTS.js WebSocket consumption
+                    // Configure connection to local WebSocket server that receives the multicast
                     const playerUrl = 'ws://localhost:8080/mpegts';
                     
+                    // Configure media source with robust settings for live streaming
                     const mediaDataSource = {
                         type: 'mse',
                         hasVideo: true,
                         hasAudio: true,
                         url: playerUrl,
-                        isLive: true
+                        isLive: true,
+                        // More robust settings for reliable playback
+                        liveBufferLatencyChasing: true,
+                        fixAudioTimestampGap: true,
+                        enableStashBuffer: true
                     };
             
+                    // Create player with optimized settings
                     player = mpegts.createPlayer(mediaDataSource, {
                         enableWorker: true,
-                        seekType: 'range'
+                        seekType: 'range',
+                        // More robust buffer settings
+                        liveBufferLatencyChasing: true,
+                        liveBufferLatencyMaxLatency: 3,
+                        liveBufferLatencyMinRemain: 0.5,
+                        // Better error handling
+                        reuseRedirectedURL: true, 
+                        // Larger buffers for stability
+                        stashInitialSize: 1024 * 384,  // Increase initial buffer size
+                        autoCleanupSourceBuffer: true, // Auto cleanup for memory management
+                        lazyLoad: false                // Don't defer loading (we want immediate start)
                     });
                     
+                    // Add event listeners for monitoring video state
+                    videoElement.addEventListener('error', handleVideoError);
+                    videoElement.addEventListener('playing', handleVideoPlaying);
+                    
+                    // Connect player to video element and start playback
                     player.attachMediaElement(videoElement);
                     player.load();
-                    player.play();
                     
-                    // Start the watchdog timer
+                    // Small delay before play to ensure buffer initialization
+                    setTimeout(() => {
+                        try {
+                            player.play().catch(e => {
+                                logToConsole(`Play error: ${e.message}`);
+                            });
+                        } catch (e) {
+                            logToConsole(`Play exception: ${e.message}`);
+                        }
+                    }, 100);
+                    
+                    // Start watchdog timer to monitor connection health
                     startWatchdogTimer();
                 } else {
-                    // Log error if electron is not available
-                    const logEntry = 'Error: Electron is required for multicast support';
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                    logToConsole('Error: Electron is required for multicast support');
                     document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
                     alert('This player requires Electron for multicast support.');
                 }
             } catch (e) {
-                // Handle any unexpected errors during connection
-                const logEntry = `Connection error: ${e.message}`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+                logToConsole(`Connection error: ${e.message}`);
                 document.getElementById('statusDisplay').textContent = `Connection error: ${e.message}`;
+                // If we failed to even start connecting, increment failure counter
+                consecutiveFailures++;
             }
         }
         
@@ -488,10 +401,7 @@
             if (watchdogTimerId) {
                 clearInterval(watchdogTimerId);
                 watchdogTimerId = null;
-                
-                const logEntry = "Watchdog timer stopped";
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+                logToConsole("Watchdog timer stopped");
             }
             
             if (player) {
@@ -505,84 +415,235 @@
             // If this is an Electron app, leave the multicast group
             if (typeof window.electron !== 'undefined') {
                 window.electron.leaveMulticast();
-                
-                // Log that we're leaving the multicast group
-                const logEntry = 'Leaving multicast group';
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+                logToConsole('Leaving multicast group');
             }
         }
         
-        // Function to clear status message after timeout
-        function clearStatusAfterDelay(delay) {
-            // Clear any existing timeout
-            if (statusTimeoutId) {
-                clearTimeout(statusTimeoutId);
+        // ----- Event Handlers -----
+        function handleVideoError(e) {
+            logToConsole(`Video element error: ${videoElement.error ? videoElement.error.message : 'Unknown error'}`);
+            resetPlayer();
+        }
+        
+        function handleVideoPlaying() {
+            logToConsole('Video started playing successfully');
+        }
+        
+        // ----- Recovery Functions -----
+        function resetPlayer() {
+            logToConsole('Performing complete reset of player...');
+            
+            // Increment retry counter
+            retryCounter++;
+            logToConsole(`Reset attempt ${retryCounter}/${maxRetries}`);
+            
+            // Step 1: Leave multicast group first
+            if (typeof window.electron !== 'undefined') {
+                try {
+                    window.electron.leaveMulticast();
+                    logToConsole('Left multicast group for clean reset');
+                } catch (e) {
+                    logToConsole(`Error leaving multicast: ${e.message}`);
+                }
             }
             
-            // Set new timeout to clear the status message
-            statusTimeoutId = setTimeout(() => {
-                document.getElementById('statusDisplay').textContent = '';
-            }, delay);
+            // Step 2: Disconnect and destroy the player
+            if (player) {
+                try {
+                    // Properly disconnect in sequence
+                    player.pause();
+                    player.unload();
+                    player.detachMediaElement();
+                    player.destroy();
+                    player = null;
+                    logToConsole('Player instance destroyed');
+                } catch (e) {
+                    logToConsole(`Error during player cleanup: ${e.message}`);
+                }
+            }
+            
+            // Step 3: Remove event listeners to prevent memory leaks
+            try {
+                videoElement.removeEventListener('error', handleVideoError);
+                videoElement.removeEventListener('playing', handleVideoPlaying);
+                logToConsole('Event listeners removed');
+            } catch (e) {
+                logToConsole(`Error removing event listeners: ${e.message}`);
+            }
+            
+            // Step 4: Clear MediaSource references and clean video element
+            try {
+                // Force MSE cleanup
+                if (videoElement.src) {
+                    URL.revokeObjectURL(videoElement.src);
+                }
+                
+                // Reset all video element properties
+                videoElement.pause();
+                videoElement.removeAttribute('src');
+                videoElement.removeAttribute('autoplay');
+                videoElement.load();
+                
+                // Clear error state
+                videoElement.error = null;
+                
+                // Clear any srcObject
+                if (videoElement.srcObject) {
+                    videoElement.srcObject = null;
+                }
+                
+                logToConsole('Video element completely reset');
+            } catch (e) {
+                logToConsole(`Error during video element cleanup: ${e.message}`);
+            }
+            
+            // Step 5: Clear any lingering timers
+            if (watchdogTimerId) {
+                clearInterval(watchdogTimerId);
+                watchdogTimerId = null;
+                logToConsole('Watchdog timer cleared');
+            }
+            
+            // Step 6: Force a small delay to ensure browser cleanup
+            setTimeout(() => {
+                // If we've reached max retries, show the QR code overlay
+                if (retryCounter >= maxRetries) {
+                    logToConsole(`Maximum retries (${maxRetries}) reached. Showing QR code overlay.`);
+                    showQRCodeOverlay();
+                } else {
+                    // Reset any media source buffers that might be in updating state
+                    try {
+                        // Try to reconnect
+                        logToConsole('Attempting to reconnect after reset');
+                        player_connect();
+                    } catch (e) {
+                        logToConsole(`Error during reconnection: ${e.message}`);
+                        // Last resort - reload the page
+                        if (retryCounter >= maxRetries - 1) {
+                            logToConsole('Critical failure, showing QR code');
+                            showQRCodeOverlay();
+                        }
+                    }
+                }
+            }, 2000); // Wait for 2 seconds to ensure clean slate
         }
         
-        // Setup electron IPC listeners if available
+        // ----- Watchdog Timer -----
+        function startWatchdogTimer() {
+            // Clear any existing timer
+            if (watchdogTimerId) {
+                clearInterval(watchdogTimerId);
+                watchdogTimerId = null;
+            }
+            
+            // Set the initial packet time
+            lastPacketTime = Date.now();
+            
+            // Start a new timer with improved health checks
+            watchdogTimerId = setInterval(() => {
+                const now = Date.now();
+                const timeSinceLastPacket = now - lastPacketTime;
+                
+                // Check for packet timeout (5 seconds)
+                if (timeSinceLastPacket > 5000 && player) {
+                    logToConsole(`No packets received for ${timeSinceLastPacket/1000} seconds. Resetting player...`);
+                    resetPlayer();
+                    return; // Exit early after triggering reset
+                }
+                
+                // If we've joined but never received data for 10 seconds, also reset
+                if (packetCounter === 0 && now - startTime > 10000 && player) {
+                    logToConsole(`Connected but no data received for 10 seconds. Resetting player...`);
+                    resetPlayer();
+                    return; // Exit early after triggering reset
+                }
+                
+                // Check if video element is in a valid state
+                if (player && videoElement) {
+                    // Check for valid playback
+                    const isPlaying = !videoElement.paused && 
+                                      !videoElement.ended && 
+                                      videoElement.readyState > 2;
+                    
+                    // If we're receiving packets but video isn't playing after 15 seconds
+                    if (!isPlaying && packetCounter > 10 && (now - startTime) > 15000) {
+                        logToConsole(`Receiving data but playback not started after 15 seconds. Resetting player...`);
+                        resetPlayer();
+                        return;
+                    }
+                    
+                    // Additional check for stalled video - if time hasn't advanced but we're receiving packets
+                    if (isPlaying && window.lastVideoCurrentTime > 0) {
+                        const currentTime = videoElement.currentTime;
+                        
+                        // If current time is stuck for 5+ seconds but we've received packets recently
+                        if (Math.abs(currentTime - window.lastVideoCurrentTime) < 0.1 && 
+                            timeSinceLastPacket < 2000 && 
+                            (now - startTime) > 15000) {
+                            
+                            logToConsole(`Video time stalled at ${currentTime.toFixed(2)}s but receiving packets. Resetting player...`);
+                            resetPlayer();
+                            return;
+                        }
+                        
+                        // Update the last known time if it's advancing
+                        if (Math.abs(currentTime - window.lastVideoCurrentTime) >= 0.1) {
+                            window.lastVideoCurrentTime = currentTime;
+                        }
+                    } else if (isPlaying) {
+                        // Initialize last video time if this is the first check
+                        window.lastVideoCurrentTime = videoElement.currentTime;
+                    }
+                }
+                
+            }, 2000); // Check every 2 seconds
+            
+            logToConsole("Enhanced watchdog timer started");
+        }
+        
+        // ----- Electron IPC Listeners -----
         function setupElectronListeners() {
             if (typeof window.electron !== 'undefined') {
-                const logEntry = "Electron detected. Setting up IPC listeners...";
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+                logToConsole("Electron detected. Setting up IPC listeners...");
                 
                 // Listen for multicast join confirmation
                 window.electron.onMulticastJoined((address) => {
-                    const logEntry = `Successfully joined multicast group: ${address}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    // Update status display
+                    logToConsole(`Successfully joined multicast group: ${address}`);
                     document.getElementById('statusDisplay').textContent = `Connected to: ${address}`;
-                    
-                    // Set timeout to clear status message after 10 seconds
                     clearStatusAfterDelay(10000);
                 });
                 
                 // Listen for multicast errors
                 window.electron.onMulticastError((error) => {
-                    const logEntry = `Multicast error: ${error}`;
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
-                    
-                    // Update status display with error
+                    logToConsole(`Multicast error: ${error}`);
                     document.getElementById('statusDisplay').textContent = `Error: ${error}`;
-                    
-                    // Set timeout to clear status message after 10 seconds
                     clearStatusAfterDelay(10000);
                 });
                 
-                // Listen for multicast data with improved logging
+                // Listen for multicast data
                 window.electron.onMulticastData((data) => {
                     // Update the last packet time
                     lastPacketTime = Date.now();
                     
-                    // Update counters
+                    // Reset retry counters on successful data
+                    if (consecutiveFailures > 0 || packetCounter === 0) {
+                        resetRetryCounters();
+                        logToConsole("Receiving data packets - reset failure counters");
+                    }
+                    
+                    // Update counter
                     packetCounter++;
-                    packetSizeTotal += data.size;
-        
+                    
                     // Log specific packets: 1st, 10th, 100th, and every 100th after that
                     if (packetCounter === 1 || 
                         packetCounter === 10 || 
                         packetCounter === 100 || 
                         (packetCounter > 100 && packetCounter % 100 === 0)) {
                         
-                        // Calculate bitrate
                         const elapsedSec = (Date.now() - startTime) / 1000;
-                        const bitrateMbps = (packetSizeTotal * 8) / (elapsedSec * 1000000);
+                        const bitrateMbps = (data.size * packetCounter * 8) / (elapsedSec * 1000000);
                         
-                        const logEntry = `Packet #${packetCounter}: Received ${data.size} bytes (Avg bitrate: ${bitrateMbps.toFixed(2)} Mbps)`;
-                        logcatbox.value += logEntry + '\n';
-                        logcatbox.scrollTop = logcatbox.scrollHeight;
-                        
-                        lastLoggedPacket = packetCounter;
+                        logToConsole(`Packet #${packetCounter}: Received ${data.size} bytes (Est. bitrate: ${bitrateMbps.toFixed(2)} Mbps)`);
                     }
                 });
                 
@@ -591,48 +652,53 @@
                     window.electron.onProtocolData((arg) => {
                         handleProtocolArgument(arg);
                     });
-                    
-                    const logEntry = "Protocol data handler set up";
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                    logToConsole("Protocol data handler set up");
                 } else {
-                    const logEntry = "Protocol data handler not available";
-                    logcatbox.value += logEntry + '\n';
-                    logcatbox.scrollTop = logcatbox.scrollHeight;
+                    logToConsole("Protocol data handler not available");
                 }
             } else {
-                const logEntry = "Electron not detected. WebTransport multicast requires Electron.";
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+                logToConsole("Electron not detected. WebTransport multicast requires Electron.");
                 document.getElementById('statusDisplay').textContent = 'Error: Electron support not found';
             }
         }
         
-        function autoConnectWithDefault() {
-            // Only auto-connect if we haven't connected yet
-            if (!autoConnected) {
-                const logEntry = `Auto-connecting with default address: ${multicastAddress}`;
-                logcatbox.value += logEntry + '\n';
-                logcatbox.scrollTop = logcatbox.scrollHeight;
+        // ----- Error Detection in Logs -----
+        mpegts.LoggingControl.addLogListener(function(type, str) {
+            logcatbox.value += str + '\n';
+            logcatbox.scrollTop = logcatbox.scrollHeight;
+            
+            // Detect critical errors in logs
+            if (str.includes("Fatal error") || 
+                str.includes("MediaSource Error") || 
+                str.includes("Failed to") ||
+                str.includes("Invalid") && str.includes("stream")) {
                 
+                logToConsole(`Critical error detected in logs: "${str}". Triggering recovery...`);
+                resetPlayer();
+            }
+        });
+        
+        // ----- Auto-connect with default address -----
+        function autoConnectWithDefault() {
+            if (!autoConnected) {
+                logToConsole(`Auto-connecting with default address: ${multicastAddress}`);
+                retryCounter = 0;
                 player_connect();
                 autoConnected = true;
                 
-                // Make the log visible by default to help diagnose issues
+                // Make the log visible by default
                 document.getElementById("logcatbox").style.display = "block";
                 document.querySelector(".toggleLog").textContent = "Hide Log";
             }
         }
         
+        // Initialize the player when the document is ready
         window.addEventListener('DOMContentLoaded', () => {
-            // Initialize with hidden logs
-            const initLogEntry = "Page loaded. Initializing player...";
-            logcatbox.value = initLogEntry + '\n';
+            logToConsole("Page loaded. Initializing player...");
             
             setupElectronListeners();
             
             // Check if there's a startup argument in localStorage
-            // This is a fallback method if IPC isn't set up yet
             const savedArg = localStorage.getItem('startupArg');
             if (savedArg) {
                 handleProtocolArgument(savedArg);
@@ -642,47 +708,6 @@
                 setTimeout(autoConnectWithDefault, 1000);
             }
         });
-        
-        // Add log listener
-        mpegts.LoggingControl.addLogListener(function(type, str) {
-            logcatbox.value += str + '\n';
-            logcatbox.scrollTop = logcatbox.scrollHeight;
-        });
-        
-        function toggleLog() {
-            var logBox = document.getElementById("logcatbox");
-            var toggleLink = document.querySelector(".toggleLog");
-        
-            if (logBox.style.display === "none" || logBox.style.display === "") {
-                logBox.style.display = "block";
-                toggleLink.textContent = "Hide Log";
-        
-                // Scroll the page down to the bottom
-                setTimeout(() => {
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }, 0);
-            } else {
-                logBox.style.display = "none";
-                toggleLink.textContent = "Show Log";
-            }
-        }
-        
-        // Function to open external links in default browser
-        function openExternalLink(url) {
-            // Check if electron is available and has the shell.openExternal method
-            if (typeof window.electron !== 'undefined' && window.electron.openExternal) {
-                window.electron.openExternal(url);
-            } else {
-                // Fallback for when running in a regular browser
-                window.open(url, '_blank');
-            }
-        }
-        
-        // Expose a global function for the main process to call via preload
-        window.setMulticastAddress = function(address) {
-            handleProtocolArgument(address);
-        };
     </script>
- 
 </body>
 </html>
