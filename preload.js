@@ -53,6 +53,9 @@ contextBridge.exposeInMainWorld(
       // Remove any existing listeners to avoid duplicates
       ipcRenderer.removeAllListeners('protocol-data');
       ipcRenderer.on('protocol-data', (_, data) => callback(data));
+    },
+    updateHelpMenu: (newText) => {
+      ipcRenderer.send('update-help-menu', newText);
     }
   }
 );

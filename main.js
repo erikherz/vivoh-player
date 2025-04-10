@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const dgram = require('dgram');
 const path = require('path');
 const express = require('express');
@@ -33,6 +33,46 @@ const dataBuffer = {
     return [...this.packets];
   }
 };
+
+const template = [
+  // Other menu items like File, Edit, etc.
+  {
+    label: 'Help',
+    submenu: [
+      {
+        label: 'Multicast Video Player', 
+        click: async () => {
+            await shell.openExternal('https://vivoh.com')
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'About',
+        role: 'about'
+      }
+    ]
+  }
+];
+
+// If you need to update the menu later:
+function updateHelpMenuText(newText) {
+  // Get the current menu
+  const currentMenu = Menu.getApplicationMenu();
+  
+  // Find the Help menu
+  const helpMenu = currentMenu.items.find(item => item.label === 'Help');
+  
+  if (helpMenu && helpMenu.submenu) {
+    // Update the first item in the Help submenu
+    helpMenu.submenu.items[0].label = newText;
+    
+    // Important: You must rebuild and set the application menu again
+    // for changes to take effect
+    Menu.setApplicationMenu(currentMenu);
+  }
+}
 
 // Parse command line arguments
 function processArguments() {
@@ -289,6 +329,11 @@ function setupIPC() {
       mainWindow.webContents.send('buffer-cleared');
     }
   });
+
+  ipcMain.on('update-help-menu', (event, newText) => {
+    console.log(`Request to update Help menu text to: ${newText}`);
+    updateHelpMenuText(newText);
+  });
 }
 
 // Process the command line arguments before app is ready
@@ -345,6 +390,7 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createWindow();
     setupIPC();
+    createAppMenu();
     
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -361,3 +407,71 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+function createAppMenu() {
+  // Define the menu template
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Learn More',
+          click: async () => {
+            await shell.openExternal('https://vivoh.com')
+          }
+        },
+        {
+          label: 'Report Issue',
+          click: async () => {
+            await shell.openExternal('https://vivoh.com/support')
+          }
+        }
+      ]
+    }
+  ];
+
+  // Build the menu from template
+  const menu = Menu.buildFromTemplate(template);
+  
+  // Set as main app menu
+  Menu.setApplicationMenu(menu);
+  
+  return menu;
+}
+
+// Function to update the Help menu text
+function updateHelpMenuText(newText) {
+  // Get the current menu
+  const currentMenu = Menu.getApplicationMenu();
+  
+  // Find the Help menu
+  const helpMenu = currentMenu.items.find(item => item.label === 'Help');
+  
+  if (helpMenu && helpMenu.submenu) {
+    // Update the first item in the Help submenu
+    helpMenu.submenu.items[0].label = newText;
+    
+    // Important: You must rebuild and set the application menu again
+    // for changes to take effect
+    Menu.setApplicationMenu(currentMenu);
+  }
+}
