@@ -56,10 +56,10 @@
         }
         .toggleLog {
             display: block;
-            text-align: right;
+            text-align: left;
             margin-top: 5px;
             cursor: pointer;
-            color: blue;
+            color: #0066cc;
             text-decoration: underline;
         }
         .toggleLog:hover {
@@ -71,9 +71,12 @@
             margin-top: 10px;
         }
         .report-issue {
+            display: block;
+            text-align: right;
+            margin-top: 5px;
+            cursor: pointer;
             color: #0066cc;
             text-decoration: underline;
-            cursor: pointer;
         }
         
         /* QR Code Overlay Styles */
@@ -156,8 +159,8 @@
             </video>
         </div>
         <div class="footer">
-            <a href="#" class="report-issue" onclick="openExternalLink('https://vivoh.com'); return false;">Report Issue</a>
             <a href="#" class="toggleLog" onclick="toggleLog(); return false;">Show Log</a>
+            <a href="#" class="report-issue" onclick="openExternalLink('https://vivoh.com'); return false;">Report Issue</a>
         </div>
         <textarea id="logcatbox" class="logcatBox" rows="10" readonly></textarea>
     </div>
@@ -544,16 +547,16 @@
                 const now = Date.now();
                 const timeSinceLastPacket = now - lastPacketTime;
                 
-                // Check for packet timeout (5 seconds)
-                if (timeSinceLastPacket > 5000 && player) {
+                // Check for packet timeout (2 seconds)
+                if (timeSinceLastPacket > 2000 && player) {
                     logToConsole(`No packets received for ${timeSinceLastPacket/1000} seconds. Resetting player...`);
                     resetPlayer();
                     return; // Exit early after triggering reset
                 }
                 
-                // If we've joined but never received data for 10 seconds, also reset
-                if (packetCounter === 0 && now - startTime > 10000 && player) {
-                    logToConsole(`Connected but no data received for 10 seconds. Resetting player...`);
+                // If we've joined but never received data for 2 seconds, also reset
+                if (packetCounter === 0 && now - startTime > 2000 && player) {
+                    logToConsole(`Connected but no data received for 2 seconds. Resetting player...`);
                     resetPlayer();
                     return; // Exit early after triggering reset
                 }
