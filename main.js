@@ -200,6 +200,13 @@ function createWindow() {
       joinMulticastGroup(multicastArgument);
     }
   });
+
+  // Handle external links
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Let the OS handle the URL with the default browser
+    shell.openExternal(url);
+    return { action: 'deny' }; // Prevent Electron from opening it
+  });
   
   // Prevent garbage collection
   mainWindow.on('closed', () => {

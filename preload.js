@@ -19,9 +19,8 @@ contextBridge.exposeInMainWorld(
     clearBuffer: () => {
       ipcRenderer.send('clear-buffer');
     },
-    // Add shell.openExternal functionality
     openExternal: (url) => {
-      shell.openExternal(url);
+      return shell.openExternal(url);
     },
     onMulticastJoined: (callback) => {
       // Remove any existing listeners to avoid duplicates
