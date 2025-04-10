@@ -862,7 +862,8 @@ function openLogWindow() {
             if (str.includes("Fatal error") || 
                 str.includes("MediaSource Error") || 
                 str.includes("Failed to") ||
-                str.includes("Invalid") && str.includes("stream")) {
+                str.includes("Invalid") && str.includes("stream") ||
+                str.includes("sync byte")) {
                 
                 logToConsole(`Critical error detected in logs: "${str}". Triggering recovery...`);
                 resetPlayer();
