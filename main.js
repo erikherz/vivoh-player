@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+let logWindow = null;
 
 // Global reference to prevent garbage collection
 let mainWindow;
@@ -12,6 +13,9 @@ let webSocketServer = null;
 let httpServer = null;
 let expressApp = null;
 let multicastArgument = null;
+
+let logBuffer = [];
+const MAX_LOG_BUFFER_SIZE = 1000;
 
 // Buffer to store multicast data
 const dataBuffer = {
@@ -73,6 +77,15 @@ function updateHelpMenuText(newText) {
     Menu.setApplicationMenu(currentMenu);
   }
 }
+
+  function storeLogMessage(logData) {
+    logBuffer.push(logData);
+    
+    // Keep buffer size limited
+    if (logBuffer.length > MAX_LOG_BUFFER_SIZE) {
+      logBuffer = logBuffer.slice(-MAX_LOG_BUFFER_SIZE);
+    }
+  }
 
 // Parse command line arguments
 function processArguments() {
@@ -341,6 +354,20 @@ function setupIPC() {
     console.log(`Request to update Help menu text to: ${newText}`);
     updateHelpMenuText(newText);
   });
+
+  ipcMain.on('log-message', (event, logData) => {
+    console.log('Log message received:', logData.message);
+    // Store the log
+    storeLogMessage(logData);
+    // Forward to log window if it exists
+    if (logWindow && !logWindow.isDestroyed()) {
+      logWindow.webContents.send('new-log-message', logData);
+    }
+  });
+
+  ipcMain.handle('get-existing-logs', () => {
+    return logBuffer;
+  });
 }
 
 // Process the command line arguments before app is ready
@@ -415,6 +442,41 @@ app.on('window-all-closed', () => {
   }
 });
 
+function createLogWindow() {
+  // Check if window already exists
+  if (logWindow) {
+    logWindow.focus();
+    return;
+  }
+  
+  // Create a new window
+  logWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    title: 'Log Viewer',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  // Load the log.html file
+  logWindow.loadFile('log-window.html');
+  
+  // Handle window close
+  logWindow.on('closed', () => {
+    logWindow = null;
+  });
+  
+  // Allow the log window to be positioned by the user
+  logWindow.setAlwaysOnTop(true, 'floating');
+  
+  // Forward any log messages to this window
+  if (mainWindow) {
+    mainWindow.webContents.send('log-window-opened');
+  }
+}
 function createAppMenu() {
   // Define the menu template
   const template = [
@@ -441,6 +503,12 @@ function createAppMenu() {
       label: 'Help',
       submenu: [
         {
+          label: 'Show Log',
+          click: () => {
+            createLogWindow();
+          }
+        },
+        {
           label: 'Learn More',
           click: async () => {
             await shell.openExternal('https://vivoh.com')
@@ -463,22 +531,4 @@ function createAppMenu() {
   Menu.setApplicationMenu(menu);
   
   return menu;
-}
-
-// Function to update the Help menu text
-function updateHelpMenuText(newText) {
-  // Get the current menu
-  const currentMenu = Menu.getApplicationMenu();
-  
-  // Find the Help menu
-  const helpMenu = currentMenu.items.find(item => item.label === 'Help');
-  
-  if (helpMenu && helpMenu.submenu) {
-    // Update the first item in the Help submenu
-    helpMenu.submenu.items[0].label = newText;
-    
-    // Important: You must rebuild and set the application menu again
-    // for changes to take effect
-    Menu.setApplicationMenu(currentMenu);
-  }
 }

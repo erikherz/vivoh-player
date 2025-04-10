@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <link rel="icon" href="data:;base64,=">
+    <title>Vivoh Log Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #282c34;
+            color: #abb2bf;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            color: #e5c07b;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            background-color: #5c6370;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        button:hover {
+            background-color: #61afef;
+        }
+        
+        .log-container {
+            flex: 1;
+            background-color: #1e2127;
+            border-radius: 4px;
+            overflow: auto;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            border-bottom: 1px solid #3a3f4b;
+            padding-bottom: 2px;
+        }
+        
+        .timestamp {
+            color: #98c379;
+        }
+        
+        .error {
+            color: #e06c75;
+        }
+        
+        .info {
+            color: #61afef;
+        }
+        
+        .warning {
+            color: #e5c07b;
+        }
+        
+        .status-bar {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #5c6370;
+        }
+        
+        /* Auto-scroll toggle styling */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            margin-right: 10px;
+        }
+        
+        .toggle-container label {
+            margin-right: 8px;
+        }
+        
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #5c6370;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #61afef;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Log Viewer</h1>
+        <div class="controls">
+            <div class="toggle-container">
+                <label for="autoScroll">Auto-scroll</label>
+                <label class="switch">
+                    <input type="checkbox" id="autoScroll" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button id="clearButton">Clear Log</button>
+            <button id="saveButton">Save Log</button>
+        </div>
+    </div>
+    
+    <div id="logContainer" class="log-container"></div>
+    
+    <div class="status-bar">
+        <span id="entryCount">0 entries</span>
+    </div>
+
+    <script>
+        // Initialize variables
+        const logContainer = document.getElementById('logContainer');
+        const clearButton = document.getElementById('clearButton');
+        const saveButton = document.getElementById('saveButton');
+        const autoScrollToggle = document.getElementById('autoScroll');
+        const entryCount = document.getElementById('entryCount');
+        let logEntries = [];
+        
+        // Function to add a log entry to the display
+        function addLogEntry(message, type = 'info') {
+            const timestamp = new Date().toISOString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'timestamp';
+            timestampSpan.textContent = `[${timestamp}] `;
+            
+            entry.appendChild(timestampSpan);
+            entry.appendChild(document.createTextNode(message));
+            
+            logContainer.appendChild(entry);
+            
+            // Auto-scroll if enabled
+            if (autoScrollToggle.checked) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            
+            // Store entry for potential save
+            logEntries.push({
+                timestamp,
+                message,
+                type
+            });
+            
+            // Update entry count
+            entryCount.textContent = `${logEntries.length} entries`;
+        }
+        
+        // Function to clear the log
+        function clearLog() {
+            logContainer.innerHTML = '';
+            logEntries = [];
+            entryCount.textContent = '0 entries';
+        }
+        
+        // Function to save log to file
+        function saveLog() {
+            const logText = logEntries.map(entry => 
+                `[${entry.timestamp}] ${entry.message}`
+            ).join('\n');
+            
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vivoh-log-${new Date().toISOString().replace(/:/g, '-')}.txt`;
+            a.click();
+            
+            URL.revokeObjectURL(url);
+        }
+        
+        // Set up event listeners
+        clearButton.addEventListener('click', clearLog);
+        saveButton.addEventListener('click', saveLog);
+        
+        // Listen for messages from main process
+        window.electron.onLogMessage((logData) => {
+            addLogEntry(logData.message, logData.type || 'info');
+        });
+        
+        // Add initial entry
+        addLogEntry('Log window opened', 'info');
+        
+        // Add any existing log entries if available
+        window.electron.getExistingLogs((logs) => {
+            if (logs && logs.length) {
+                logs.forEach(log => {
+                    addLogEntry(log.message, log.type || 'info');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
