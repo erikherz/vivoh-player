@@ -215,6 +215,21 @@
             border-radius: 50%;
             margin-right: 5px;
         }
+        .footer {
+            display: block !important; 
+            text-align: left !important;
+            margin-top: 10px !important;
+        }
+
+        /* Override link styles */
+        .report-issue, .reload-player {
+            display: inline-block !important;
+            float: none !important;
+            text-align: left !important;
+            cursor: pointer;
+            color: #0066cc;
+            text-decoration: underline;
+        }
     </style>
 </head>
 
@@ -244,6 +259,8 @@
         </div>
         <div class="footer">
             <a href="#" class="report-issue" onclick="openExternalLink('https://vivoh.com'); return false;">Report Issue</a>
+            &nbsp;&nbsp;&nbsp;&nbsp;
+            <a href="#" class="reload-player" onclick="reloadPlayer(); return false;">Reload Player</a>
         </div>
     </div>
     
@@ -394,6 +411,24 @@
             hideQRCodeOverlay();
             player_connect();
             logToConsole("Manual connection retry initiated by user");
+        }
+
+        function reloadPlayer() {
+            logToConsole("Manual player reload requested");
+            
+            // First disconnect the current player
+            player_disconnect();
+            
+            // Reset retry counters
+            retryCounter = 0;
+            consecutiveFailures = 0;
+            
+            // Force a small delay before reconnecting
+            setTimeout(() => {
+                // Reconnect the player
+                player_connect();
+                logToConsole("Player reloaded successfully");
+            }, 500);
         }
 
         function openExternalLink(url) {
