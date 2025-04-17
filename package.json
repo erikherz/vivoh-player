@@ -1,9 +1,21 @@
 {
   "name": "multicast-webtransport-player",
-  "version": "1.0.0",
-  "author": "Erik Herz",
-  "description": "Video player with multicast and WebTransport support",
+  "version": "5.5.0",
+  "author": "Vivoh, Inc",
+  "description": "Multicast video player",
   "main": "main.js",
+  "build": {
+    "productName": "vivoh",
+    "copyright": "Copyright © 2025 Vivoh, Inc",
+    "win": {
+      "icon": "build/icon.ico",
+      "fileVersion": "5.5.0",
+      "version": "5.5.0",
+      "legalCopyright": "© 2025 Vivoh",
+      "companyName": "Vivoh, Inc",
+      "productVersion": "5.5.0"
+    }
+  },
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
