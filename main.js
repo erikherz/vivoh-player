@@ -106,12 +106,12 @@ function processArguments() {
   
   if (multicastArgument) {
     // Extract the multicast address from the argument
-    // Format: "globalUrl=fec://239.0.0.1:8888"
+    // Format: "globalUrl=udp://239.0.0.1:8888"
     let extractedAddress = multicastArgument;
     
     // Check if it contains the globalUrl prefix
     if (multicastArgument.includes('globalUrl=')) {
-      const match = multicastArgument.match(/globalUrl=(?:fec:\/\/)?([^\/\s]+)/);
+      const match = multicastArgument.match(/globalUrl=(?:udp:\/\/)?([^\/\s]+)/);
       if (match && match[1]) {
         extractedAddress = match[1];
       }
@@ -407,7 +407,7 @@ if (!gotTheLock) {
       
       // Extract the multicast address if needed
       if (secondInstanceArg.includes('globalUrl=')) {
-        const match = secondInstanceArg.match(/globalUrl=(?:fec:\/\/)?([^\/\s]+)/);
+        const match = secondInstanceArg.match(/globalUrl=(?:udp:\/\/)?([^\/\s]+)/);
         if (match && match[1]) {
           secondInstanceArg = match[1];
         }
