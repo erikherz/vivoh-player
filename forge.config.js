@@ -1,19 +1,20 @@
+const path = require('path');
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
     asar: true,
-    // Optional: Set executable name if desired
-    executableName: "VivohMulticastPlayer"
+    executableName: "Vivoh",
+    icon: path.resolve(__dirname, 'logo'), // No extension! Electron Forge adds `.ico` or `.icns` automatically
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        // Optional: Set name for installer
-        name: "VivohMulticastPlayer"
+        name: "Vivoh",
+        setupIcon: path.resolve(__dirname, 'logo.ico'), // Windows installer icon
       },
     },
     {
@@ -34,8 +35,6 @@ module.exports = {
       name: '@electron-forge/plugin-auto-unpack-natives',
       config: {},
     },
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,
