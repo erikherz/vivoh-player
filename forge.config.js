@@ -6,7 +6,15 @@ module.exports = {
   packagerConfig: {
     asar: true,
     executableName: "Vivoh",
-    icon: path.resolve(__dirname, 'logo'), // No extension! Electron Forge adds `.ico` or `.icns` automatically
+    icon: path.resolve(__dirname, 'logo'), // No extension! Uses logo.ico or logo.icns
+    appCopyright: "© 2025 Vivoh, Inc",
+    win32metadata: {
+      CompanyName: "Vivoh, Inc",
+      FileDescription: "Multicast video player",
+      OriginalFilename: "Vivoh.exe",
+      ProductName: "Vivoh Multicast Player",
+      InternalName: "Vivoh"
+    }
   },
   rebuildConfig: {},
   makers: [
